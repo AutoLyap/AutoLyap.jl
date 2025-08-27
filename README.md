@@ -33,24 +33,21 @@ Below is a short example on using `AutoLyap.jl` for Douglas-Rachford splitting.
 #### Example: Douglas-Rachford Method
 
 We show here how `AutoLyap.jl` can be used to find linear convergence rates for the Douglas–Rachford method using a few lines of Julia code. In particular, consider the inclusion problem
+
 $$
 \text{find } y \in \mathcal{H} \text{ such that } 0 \in G_1(y) + G_2(y),
 $$
-where $G_1: \mathcal{H} \to \mathcal{H}$ is a maximally monotone operator and $G_2: \mathcal{H} \to \mathcal{H}$ is a $\mu$-strongly monotone and $L$-Lipschitz continuous operator. The Douglas–Rachford method is given by
-$$
-\begin{gathered}
-    y_1^k = J_{\gamma G_1}(x^k), \\
-    y_2^k = J_{\gamma G_2}(2y_1^k - x^k), \\
-    x^{k+1} = x^k + \lambda(y_2^k - y_1^k),
-\end{gathered}
-$$
-where $k=0,1,2,\ldots$, $J_{\gamma G_i}$ is the resolvent for $G_i$ with step-size $\gamma \in \mathbb{R}_{++}$, $\lambda \in \mathbb{R}$ is a relaxation parameter, and $x^0 \in \mathcal{H}$ is our initial point. In particular, the Douglas–Rachford method  is implemented in `AutoLyap.jl` via  `DouglasRachford` composite type located in the file `src/algorithms/douglas_rachford.jl` .
 
-The code below, using the values $(\mu, L, \gamma, \lambda) = (1, 2, 1, 2)$, performs a bisection search to find the smallest possible $\rho \in [0, 1]$ such that
-$$
-\|y_1^k - y^*\|^2 \in \mathcal{O}(\rho^k) \quad \text{as } k \to \infty
-$$
-is provable via the Lyapunov analysis described in [1] under default settings, where $y^* \in \mathbf{zer}(G_1 + G_2)$.
+where $G_1: \mathcal{H} \to \mathcal{H}$ is a maximally monotone operator and $G_2: \mathcal{H} \to \mathcal{H}$ is a $\mu$-strongly monotone and $L$-Lipschitz continuous operator. The Douglas–Rachford method is
+
+$$y_1^k = J_{\gamma G_1}(x^k),$$
+$$y_2^k = J_{\gamma G_2}(2y_1^k - x^k),$$
+$$x^{k+1} = x^k + \lambda(y_2^k - y_1^k),$$
+
+where $k=0,1,2,\ldots$, $J_{\gamma G_i}$ is the resolvent for $G_i$ with step-size $\gamma \in \mathbb{R}_{++}$, $\lambda \in \mathbb{R}$ is a relaxation parameter, and $x^0 \in \mathcal{H}$ is our initial point. The Douglas–Rachford method is implemented in `AutoLyap.jl` via `DouglasRachford` in `src/algorithms/douglas_rachford.jl`.
+
+The code below, using $(\mu, L, \gamma, \lambda) = (1, 2, 1, 2)$, performs a bisection search to find the smallest $\rho \in [0,1]$ such that $||y_1^k - y^\star||^2 \in O(\rho^k)$ as $k$ goes to $\infty$, where $y^\star \in \text{zero}(G_1 + G_2)$; this is  provable via the Lyapunov analysis in [1], 
+
 
 ```julia
 using AutoLyap 
