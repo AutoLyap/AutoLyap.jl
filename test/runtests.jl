@@ -6,7 +6,7 @@ end
 
 @info "[💻 ] Running tests for AutoLyap.jl"
 
-solver_val = :copt # options are :mosek, :clarabel, :cosmo, :scs, :copt
+solver_val = :clarabel # options are :mosek, :clarabel, :cosmo, :scs, :copt
 
 show_output_val = false # options are true or false
 
