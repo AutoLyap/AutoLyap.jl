@@ -50,7 +50,8 @@ The code below, using $(\mu, L, \gamma, \lambda) = (1, 2, 1, 2)$, performs a bis
 
 
 ```julia
-using AutoLyap 
+using AutoLyap
+using AutoLyap: IterationIndependent 
 
 solver_val = :clarabel # options are :mosek (commercial), :clarabel (open-source), :cosmo (open-source), :scs (open-source), :copt (commercial); for the commercial packages you will need valid licenses
 
