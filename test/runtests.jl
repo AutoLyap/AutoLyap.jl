@@ -35,7 +35,6 @@ end
 
 @testset "DRS Linear Convergence (StronglyMonotone + Lipschitz)" begin
 
-    using AutoLyap: IterationIndependent
     # ----------------------------------------------------------------------
     # Step 1: Defining the Mathematical Problem
     # ----------------------------------------------------------------------
@@ -59,13 +58,13 @@ end
     # Step 3: Defining the Performance Metric
     # ----------------------------------------------------------------------
 
-    (P, T) = IterationIndependent.get_parameters_distance_to_solution(algorithm)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
 
     # ----------------------------------------------------------------------
     # Step 4: Finding the Performance Rate via an SDP
     # ----------------------------------------------------------------------
 
-    rho = IterationIndependent.bisection_search_rho(
+    rho = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
         algorithm,
         P,
