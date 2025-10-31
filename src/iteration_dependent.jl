@@ -324,8 +324,11 @@ function verify_iteration_dependent_Lyapunov(
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"
         end
-        if status in (OPTIMAL, INFEASIBLE_OR_UNBOUNDED)
+        if status in (OPTIMAL, INFEASIBLE_OR_UNBOUNDED, ALMOST_OPTIMAL)
             return (true, value(c))
+            if status == ALMOST_OPTIMAL
+                @warn "[💀 ] The solver returned ALMOST_OPTIMAL, the value of c may not be reliable..."
+            end
         else
             return (false, nothing)
         end
