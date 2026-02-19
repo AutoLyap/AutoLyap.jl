@@ -130,8 +130,38 @@ function _compute_thetas(algo::Algorithm)
     return theta0, theta1
 end
 
+function _assert_full_model_status(function_name::String, status)
+    if status in (OPTIMAL, ALMOST_OPTIMAL)
+        return nothing
+    end
+    throw(ErrorException("`$function_name` with `return_full_model=true` requires termination status OPTIMAL or ALMOST_OPTIMAL, got $(status)."))
+end
+
+function _to_float_matrix(data)
+    mat = Matrix(data)
+    if eltype(mat) <: VariableRef
+        return Float64.(value.(mat))
+    elseif eltype(mat) <: Number
+        return Float64.(mat)
+    end
+    return Float64.(value.(mat))
+end
+
+function _to_float_vector(data)
+    vec_data = collect(data)
+    if eltype(vec_data) <: VariableRef
+        return Float64.(value.(vec_data))
+    elseif eltype(vec_data) <: Number
+        return Float64.(vec_data)
+    end
+    return Float64.(value.(vec_data))
+end
+
+_to_float_scalar(x::VariableRef) = Float64(value(x))
+_to_float_scalar(x::Number) = Float64(x)
+
 #=  
-    verify_iteration_dependent_Lyapunov(prob::InclusionProblem, algo::Algorithm, K::Int, Q_0::Matrix, Q_K::Matrix, q_0::Union{Vector, Nothing}=nothing, q_K::Union{Vector, Nothing}=nothing; solver=:clarabel, show_output=:on)
+    verify_iteration_dependent_Lyapunov(prob::InclusionProblem, algo::Algorithm, K::Int, Q_0::Matrix, Q_K::Matrix, q_0::Union{Vector, Nothing}=nothing, q_K::Union{Vector, Nothing}=nothing; solver=:clarabel, show_output=:on, return_full_model=false)
 
 Verify a chain of iteration-dependent Lyapunov inequalities via an SDP.
 
@@ -148,10 +178,13 @@ q_0: A vector for functional components (if any), with appropriate dimensions, U
 q_K: A vector for functional components (if any), with appropriate dimensions, Union{Vector, Nothing} (optional, default=nothing)
 solver: Solver to use (:mosek,  :clarabel, :copt, :scs, :cosmo), Symbol (keyword, default=:clarabel)
 show_output: Whether to show solver output (:on or :off), Symbol (keyword, default=:on)
+return_full_model: If true, returns a full solution snapshot with status, decision-variable values, and model. If false, returns the legacy tuple output, Bool (keyword, default=false)
 
 Output to the function
 =================== 
-A tuple $(true, c)$ if the SDP is solved successfully, or $(false, nothing)$ otherwise.
+If return_full_model == false: a tuple $(true, c)$ if the SDP is solved successfully, or $(false, nothing)$ otherwise.
+If return_full_model == true: a NamedTuple with fields successful, status, objective_value, decision_values, and model.
+In full-model mode, non-(OPTIMAL/ALMOST_OPTIMAL) statuses throw an error.
 
 =#
 
@@ -162,7 +195,8 @@ function verify_iteration_dependent_Lyapunov(
     Q_0::Matrix, Q_K::Matrix,
     q_0::Union{Vector,Nothing}=nothing, q_K::Union{Vector,Nothing}=nothing;
     solver=:mosek, # options are :mosek, :clarabel, :cosmo, :scs, :copt may add more later
-    show_output=true # options are true, false
+    show_output=true, # options are true, false
+    return_full_model=false
 )
     # --- 1. Validation ---
     (prob.m == algo.m && Set(prob.I_func) == Set(algo.I_func) && Set(prob.I_op) == Set(algo.I_op)) || throw(ArgumentError("Problem and Algorithm definitions are inconsistent."))
@@ -251,13 +285,15 @@ function verify_iteration_dependent_Lyapunov(
     end
 
     # --- 6. Add Interpolation Constraints ---
+    multiplier_records = NamedTuple[]
+
     for k in 0:K-1
         PSD_sum = -Ws[k]
         EQ_sum = m_func > 0 ? -ws[k] : nothing
 
         for i in 1:m
             interp_data_list = get_component_data(prob, i)
-            for interp_data in interp_data_list
+            for (o, interp_data) in enumerate(interp_data_list)
                 all_pairs = Vector{Any}()
                 for j in 1:algo.m_bar_is[i], k_ in k:k+1
                     push!(all_pairs, (j, k_))
@@ -299,6 +335,15 @@ function verify_iteration_dependent_Lyapunov(
                     pairs_vec = [p for p in pairs]
                     W_mat = compute_W(algo, i, pairs_vec, k, k + 1, M)
                     mult = eq ? @variable(model) : @variable(model, lower_bound = 0)
+                    push!(multiplier_records, (
+                        id=length(multiplier_records) + 1,
+                        k=k,
+                        component=i,
+                        interpolation_entry=o,
+                        pairs=copy(pairs_vec),
+                        is_equality_multiplier=eq,
+                        variable=mult
+                    ))
 
                     PSD_sum += mult * W_mat
                     if i in algo.I_func
@@ -324,6 +369,51 @@ function verify_iteration_dependent_Lyapunov(
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"
         end
+        if return_full_model
+            _assert_full_model_status("verify_iteration_dependent_Lyapunov", status)
+
+            Q_values = Dict{Int, NamedTuple{(:value, :is_decision), Tuple{Matrix{Float64}, Bool}}}()
+            for k_idx in 0:K
+                is_decision_k = 1 <= k_idx <= K - 1
+                Q_values[k_idx] = (value=_to_float_matrix(Qs[k_idx]), is_decision=is_decision_k)
+            end
+
+            q_values = nothing
+            if m_func > 0
+                q_values = Dict{Int, NamedTuple{(:value, :is_decision), Tuple{Vector{Float64}, Bool}}}()
+                for k_idx in 0:K
+                    is_decision_k = 1 <= k_idx <= K - 1
+                    q_values[k_idx] = (value=_to_float_vector(qs[k_idx]), is_decision=is_decision_k)
+                end
+            end
+
+            multipliers = [(
+                id=rec.id,
+                k=rec.k,
+                component=rec.component,
+                interpolation_entry=rec.interpolation_entry,
+                pairs=rec.pairs,
+                is_equality_multiplier=rec.is_equality_multiplier,
+                value=_to_float_scalar(rec.variable),
+                is_decision=true
+            ) for rec in multiplier_records]
+
+            decision_values = (
+                c=(value=_to_float_scalar(c), is_decision=true),
+                Q=Q_values,
+                q=q_values,
+                multipliers=multipliers
+            )
+
+            return (
+                successful=true,
+                status=status,
+                objective_value=_to_float_scalar(c),
+                decision_values=decision_values,
+                model=model
+            )
+        end
+
         if status in (OPTIMAL, INFEASIBLE_OR_UNBOUNDED, ALMOST_OPTIMAL)
             return (true, value(c))
             if status == ALMOST_OPTIMAL
@@ -333,7 +423,7 @@ function verify_iteration_dependent_Lyapunov(
             return (false, nothing)
         end
     catch e
-        if e isa Mosek.LicenseError
+        if e isa Mosek.LicenseError || return_full_model
             rethrow(e)
         end
         return (false, nothing)

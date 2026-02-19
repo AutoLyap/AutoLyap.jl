@@ -1,4 +1,4 @@
-using Test, Suppressor
+using Test, Suppressor, JuMP
 
 @suppress begin
     using AutoLyap # to turn off annoying solver info
@@ -431,4 +431,165 @@ end
 
     # The Python script's output `successful` is a boolean.
     @test successful == true
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Full-Model Return (Iteration-Independent)
+# ==============================================================================
+@testset "Iteration-Independent Full Model Return" begin
+    f_conditions = [
+        GradientDominated(mu_gd = 0.5),
+        Smooth(L = 1.0)
+    ]
+    problem = InclusionProblem(components = [f_conditions])
+    algorithm = GradientMethod(gamma = 1.0)
+
+    (P, p, T, t) = AutoLyap.IterationIndependent.get_parameters_linear_function_value_suboptimality(algorithm)
+
+    result = AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov(
+        problem,
+        algorithm,
+        P,
+        T,
+        p,
+        t;
+        rho=1.0,
+        solver=solver_val,
+        show_output=show_output_val,
+        return_full_model=true
+    )
+
+    @test result.successful == true
+    @test result.status in (JuMP.OPTIMAL, JuMP.ALMOST_OPTIMAL)
+    @test result.objective_value === nothing
+    @test result.model isa JuMP.Model
+
+    dv = result.decision_values
+    @test dv.Q.is_decision == true
+    @test dv.S.is_decision == true
+    @test dv.q !== nothing
+    @test dv.s !== nothing
+    @test dv.q.is_decision == true
+    @test dv.s.is_decision == true
+    @test size(dv.Q.value) == size(P)
+    @test size(dv.S.value) == size(T)
+    @test length(dv.q.value) == length(p)
+    @test length(dv.s.value) == length(t)
+    @test all(isfinite, dv.Q.value)
+    @test all(isfinite, dv.S.value)
+    @test all(isfinite, dv.q.value)
+    @test all(isfinite, dv.s.value)
+    @test !isempty(dv.multipliers)
+    @test all(m -> m.is_decision && isfinite(m.value), dv.multipliers)
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Full-Model Return Fixed-Variable Metadata (Iteration-Independent)
+# ==============================================================================
+@testset "Iteration-Independent Full Model Fixed Metadata" begin
+    f_conditions = [
+        GradientDominated(mu_gd = 0.5),
+        Smooth(L = 1.0)
+    ]
+    problem = InclusionProblem(components = [f_conditions])
+    algorithm = GradientMethod(gamma = 1.0)
+
+    (P, p, T, t) = AutoLyap.IterationIndependent.get_parameters_linear_function_value_suboptimality(algorithm)
+
+    result = AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov(
+        problem,
+        algorithm,
+        P,
+        T,
+        p,
+        t;
+        rho=1.0,
+        Q_equals_P=true,
+        S_equals_T=true,
+        q_equals_p=true,
+        s_equals_t=true,
+        solver=solver_val,
+        show_output=show_output_val,
+        return_full_model=true
+    )
+
+    dv = result.decision_values
+    @test dv.Q.is_decision == false
+    @test dv.S.is_decision == false
+    @test dv.q !== nothing
+    @test dv.s !== nothing
+    @test dv.q.is_decision == false
+    @test dv.s.is_decision == false
+    @test dv.Q.value ≈ Float64.(P) atol = atol_input
+    @test dv.S.value ≈ Float64.(T) atol = atol_input
+    @test dv.q.value ≈ Float64.(p) atol = atol_input
+    @test dv.s.value ≈ Float64.(t) atol = atol_input
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Full-Model Return (Iteration-Dependent)
+# ==============================================================================
+@testset "Iteration-Dependent Full Model Return" begin
+    problem = InclusionProblem(components = [SmoothConvex(L = 1.0)])
+    algorithm = OptimizedGradientMethod(L = 1.0, K = 10)
+
+    (Q_0, q_0) = AutoLyap.IterationDependent.get_parameters_distance_to_solution(algorithm, 0)
+    (Q_K, q_K) = AutoLyap.IterationDependent.get_parameters_function_value_suboptimality(algorithm, 10)
+
+    result = AutoLyap.IterationDependent.verify_iteration_dependent_Lyapunov(
+        problem,
+        algorithm,
+        10,
+        Q_0,
+        Q_K,
+        q_0,
+        q_K;
+        solver=solver_val,
+        show_output=show_output_val,
+        return_full_model=true
+    )
+
+    @test result.successful == true
+    @test result.status in (JuMP.OPTIMAL, JuMP.ALMOST_OPTIMAL)
+    @test result.objective_value isa Float64
+    @test isfinite(result.objective_value)
+    @test result.model isa JuMP.Model
+
+    dv = result.decision_values
+    @test dv.c.is_decision == true
+    @test dv.c.value ≈ result.objective_value atol = atol_input
+    @test dv.Q[0].is_decision == false
+    @test dv.Q[10].is_decision == false
+    @test all(dv.Q[k].is_decision for k in 1:9)
+    @test dv.Q[0].value ≈ Float64.(Q_0) atol = atol_input
+    @test dv.Q[10].value ≈ Float64.(Q_K) atol = atol_input
+    @test all(isfinite, dv.Q[5].value)
+    @test dv.q !== nothing
+    @test dv.q[0].is_decision == false
+    @test dv.q[10].is_decision == false
+    @test all(dv.q[k].is_decision for k in 1:9)
+    @test dv.q[0].value ≈ Float64.(q_0) atol = atol_input
+    @test dv.q[10].value ≈ Float64.(q_K) atol = atol_input
+    @test all(isfinite, dv.q[5].value)
+    @test !isempty(dv.multipliers)
+    @test all(m -> m.is_decision && isfinite(m.value), dv.multipliers)
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Full-Model Status Gate Helpers
+# ==============================================================================
+@testset "Full-Model Status Gate Helpers" begin
+    @test AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.OPTIMAL) === nothing
+    @test AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.ALMOST_OPTIMAL) === nothing
+    @test_throws ErrorException AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE)
+    @test_throws ErrorException AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE_OR_UNBOUNDED)
+
+    @test AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.OPTIMAL) === nothing
+    @test AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.ALMOST_OPTIMAL) === nothing
+    @test_throws ErrorException AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE)
+    @test_throws ErrorException AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE_OR_UNBOUNDED)
 end

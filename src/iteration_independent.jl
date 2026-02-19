@@ -139,8 +139,38 @@ function _compute_thetas(alg::Algorithm, h::Int, alpha::Int, condition::String)
     end
 end
 
+function _assert_full_model_status(function_name::String, status)
+    if status in (OPTIMAL, ALMOST_OPTIMAL)
+        return nothing
+    end
+    throw(ErrorException("`$function_name` with `return_full_model=true` requires termination status OPTIMAL or ALMOST_OPTIMAL, got $(status)."))
+end
+
+function _to_float_matrix(data)
+    mat = Matrix(data)
+    if eltype(mat) <: VariableRef
+        return Float64.(value.(mat))
+    elseif eltype(mat) <: Number
+        return Float64.(mat)
+    end
+    return Float64.(value.(mat))
+end
+
+function _to_float_vector(data)
+    vec_data = collect(data)
+    if eltype(vec_data) <: VariableRef
+        return Float64.(value.(vec_data))
+    elseif eltype(vec_data) <: Number
+        return Float64.(vec_data)
+    end
+    return Float64.(value.(vec_data))
+end
+
+_to_float_scalar(x::VariableRef) = Float64(value(x))
+_to_float_scalar(x::Number) = Float64(x)
+
 #=  
-    verify_iteration_independent_Lyapunov(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; rho::Float64=1.0, h::Int=0, alpha::Int=0, Q_equals_P=false, S_equals_T=false, q_equals_p=false, s_equals_t=false, remove_C2=false, remove_C3=false, remove_C4=true, solver=:clarabel, show_output=false)
+    verify_iteration_independent_Lyapunov(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; rho::Float64=1.0, h::Int=0, alpha::Int=0, Q_equals_P=false, S_equals_T=false, q_equals_p=false, s_equals_t=false, remove_C2=false, remove_C3=false, remove_C4=true, solver=:clarabel, show_output=false, return_full_model=false)
 
 Verify an iteration-independent Lyapunov inequality via an SDP.
 
@@ -166,10 +196,13 @@ remove_C3: Flag to remove constraint C3, Bool (keyword, default=false)
 remove_C4: Flag to remove constraint C4, Bool (keyword, default=true)
 solver: Solver to use (:mosek or :clarabel), Symbol (keyword, default=:clarabel)
 show_output: Whether to show solver output (:on or :off), Symbol (keyword, default=:on)
+return_full_model: If true, returns a full solution snapshot with status, decision-variable values, and model. If false, returns the legacy boolean output, Bool (keyword, default=false)
 
 Output to the function
 =================== 
-true if the SDP is solved successfully (i.e. a Lyapunov inequality exists), false otherwise.
+If return_full_model == false: true if the SDP is solved successfully (i.e. a Lyapunov inequality exists), false otherwise.
+If return_full_model == true: a NamedTuple with fields successful, status, objective_value (nothing), decision_values, and model.
+In full-model mode, non-(OPTIMAL/ALMOST_OPTIMAL) statuses throw an error.
 
 =#
 
@@ -183,7 +216,8 @@ function verify_iteration_independent_Lyapunov(
     q_equals_p=false, s_equals_t=false,
     remove_C2=false, remove_C3=false, remove_C4=true,
     solver=:mosek, # options are :mosek, :clarabel, :cosmo, :scs, :copt may add more later
-    show_output=false # options are true and false
+    show_output=false, # options are true and false
+    return_full_model=false
 )
     # --- 1. Validation ---
     (prob.m == algo.m && Set(prob.I_func) == Set(algo.I_func) && Set(prob.I_op) == Set(algo.I_op)) || throw(ArgumentError("Problem and Algorithm definitions are inconsistent."))
@@ -287,8 +321,10 @@ function verify_iteration_independent_Lyapunov(
     end
 
     # --- 6. Add Interpolation Constraints ---
-    PSD_sum = Dict(c => -Ws[c] for c in conds)
-    EQ_sum = m_func > 0 ? Dict(c => -ws[c] for c in conds) : Dict()
+    PSD_sum = Dict{String, Any}(c => -Ws[c] for c in conds)
+    EQ_sum = m_func > 0 ? Dict{String, Any}(c => -ws[c] for c in conds) : Dict{String, Any}()
+
+    multiplier_records = NamedTuple[]
 
     for cond in conds, i in 1:m
         interp_data_list = get_component_data(prob, i)
@@ -325,6 +361,15 @@ function verify_iteration_independent_Lyapunov(
                 pairs_vec = [p for p in pairs]
                 W_mat = compute_W(algo, i, pairs_vec, 0, k_max, M)
                 mult = eq ? @variable(model) : @variable(model, lower_bound = 0)
+                push!(multiplier_records, (
+                    id=length(multiplier_records) + 1,
+                    condition=cond,
+                    component=i,
+                    interpolation_entry=o,
+                    pairs=copy(pairs_vec),
+                    is_equality_multiplier=eq,
+                    variable=mult
+                ))
 
                 PSD_sum[cond] += mult * W_mat
                 if i in algo.I_func
@@ -350,10 +395,48 @@ function verify_iteration_independent_Lyapunov(
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"
         end
+        if return_full_model
+            _assert_full_model_status("verify_iteration_independent_Lyapunov", status)
+
+            q_entry = nothing
+            s_entry = nothing
+            if m_func > 0
+                q_entry = q === nothing ? nothing : (value=_to_float_vector(q), is_decision=!q_equals_p)
+                s_entry = s === nothing ? nothing : (value=_to_float_vector(s), is_decision=!s_equals_t)
+            end
+
+            multipliers = [(
+                id=rec.id,
+                condition=rec.condition,
+                component=rec.component,
+                interpolation_entry=rec.interpolation_entry,
+                pairs=rec.pairs,
+                is_equality_multiplier=rec.is_equality_multiplier,
+                value=_to_float_scalar(rec.variable),
+                is_decision=true
+            ) for rec in multiplier_records]
+
+            decision_values = (
+                Q=(value=_to_float_matrix(Q), is_decision=!Q_equals_P),
+                S=(value=_to_float_matrix(S), is_decision=!S_equals_T),
+                q=q_entry,
+                s=s_entry,
+                multipliers=multipliers
+            )
+
+            return (
+                successful=true,
+                status=status,
+                objective_value=nothing,
+                decision_values=decision_values,
+                model=model
+            )
+        end
+
         return status in (OPTIMAL, ALMOST_OPTIMAL) # Mosek returns this for feasibility problems
     catch e
         # Suppress solver errors other than licensing issues
-        if e isa Mosek.LicenseError
+        if e isa Mosek.LicenseError || return_full_model
             rethrow(e)
         end
         return false
