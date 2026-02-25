@@ -64,7 +64,7 @@ end
     # Step 4: Finding the Performance Rate via an SDP
     # ----------------------------------------------------------------------
 
-    rho = AutoLyap.IterationIndependent.bisection_search_rho(
+    result = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
         algorithm,
         P,
@@ -75,6 +75,7 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    rho = result["rho"]
 
     # ----------------------------------------------------------------------
     # Step 5: Add Tests
@@ -82,8 +83,38 @@ end
 
     println("[🎎 ] Computed DRS convergence rate (rho) for (StronglyMonotone + Lipschitz): $rho") #$
 
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
+    @test !isnothing(rho)
     @test rho ≈ 0.4285714266488867 atol = atol_input
 
+end
+
+@testset "Bisection Returns Non-Feasible Dict on Too-Small Upper Bound" begin
+    g1_conditions = MaximallyMonotone()
+    g2_conditions = [
+        StronglyMonotone(mu = 1.0),
+        LipschitzOperator(L = 2.0)
+    ]
+    problem = InclusionProblem(components = [g1_conditions, g2_conditions])
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+    result = AutoLyap.IterationIndependent.bisection_search_rho(
+        problem,
+        algorithm,
+        P,
+        T;
+        lower_bound=0.0,
+        upper_bound=0.2, # Known to be below the feasible rho for this benchmark.
+        tol=1e-8,
+        solver = solver_val,
+        show_output = show_output_val
+    )
+
+    @test result["status"] in ("infeasible", "not_solved")
+    @test result["rho"] === nothing
+    @test result["certificate"] === nothing
 end
 
 @testset "DRS Linear Convergence (StronglyMonotone + Cocoercive)" begin
@@ -104,7 +135,7 @@ end
     (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
 
     # Step 4: Finding the Performance Rate
-    rho = AutoLyap.IterationIndependent.bisection_search_rho(
+    result = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
         algorithm,
         P,
@@ -115,11 +146,15 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    rho = result["rho"]
 
     # Step 5: Add Tests
     println("[💽 ] Computed ")
     println("DRS convergence rate (rho) for (StronglyMonotone + Cocoercive): $rho") #$
 
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
+    @test !isnothing(rho)
     @test rho ≈ 0.1999999878462404 atol = atol_input
 end
 
@@ -146,7 +181,7 @@ end
 
     # Step 4: Finding the Performance Rate
     # Note that p and t are passed as positional arguments
-    rho = AutoLyap.IterationIndependent.bisection_search_rho(
+    result = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
         algorithm,
         P,
@@ -159,10 +194,14 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    rho = result["rho"]
 
     # Step 5: Add Tests
     println("[💾 ] Computed GM convergence rate (rho) for (GradientDominated + Smooth): $rho")
 
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
+    @test !isnothing(rho)
     @test rho ≈ 0.3999999387888238 atol = atol_input
 end
 
@@ -184,8 +223,8 @@ end
     (P, p, T, t) = AutoLyap.IterationIndependent.get_parameters_sublinear_function_value_suboptimality(algorithm)
 
     # Step 4: Verifying the Performance Rate
-    # Directly call the verify function with rho=1 and remove_C4=false
-    successful = AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov(
+    # Directly call search_lyapunov with rho=1 and remove_C4=false
+    result = AutoLyap.IterationIndependent.search_lyapunov(
         problem,
         algorithm,
         P,
@@ -199,10 +238,10 @@ end
     )
 
     # Step 5: Add Tests
-    println("[💮 ] Verified Heavy-Ball sublinear convergence: $successful")
+    println("[💮 ] Verified Heavy-Ball sublinear convergence status: ", result["status"])
 
-    # The Python script's output `successful` is a boolean.
-    @test successful == true
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
 end
 
 # ==============================================================================
@@ -227,7 +266,7 @@ end
 
     # Step 4: Finding the Performance Rate
     # Note that p and t are passed as positional arguments
-    rho = AutoLyap.IterationIndependent.bisection_search_rho(
+    result = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
         algorithm,
         P,
@@ -240,11 +279,15 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    rho = result["rho"]
 
     # Step 5: Add Tests
     println("[💧 ] Computed Heavy-Ball convergence rate (rho) for (GradientDominated + Smooth): $rho")
 
     # The expected value is obtained by running the Python script.
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
+    @test !isnothing(rho)
     @test rho ≈ 0.7090351881970491 atol = atol_input
 end
 
@@ -270,7 +313,7 @@ end
 
     # Step 4: Finding the Performance Rate
     # Note that p and t are passed as positional arguments
-    rho = AutoLyap.IterationIndependent.bisection_search_rho(
+    result = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
         algorithm,
         P,
@@ -283,11 +326,15 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    rho = result["rho"]
 
     # Step 5: Add Tests
     println("[👻 ] Computed Nesterov Momentum convergence rate (rho) for (GradientDominated + Smooth): $rho")
 
     # The expected value is obtained by running the Python script.
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
+    @test !isnothing(rho)
     @test rho ≈ 0.49999997817303665 atol = atol_input
 end
 
@@ -318,8 +365,8 @@ end
     )
 
     # Step 4: Verifying the Performance Rate
-    # Directly call the verify function for K=10 iterations
-    (successful, c) = AutoLyap.IterationDependent.verify_iteration_dependent_Lyapunov(
+    # Directly call search_lyapunov for K=10 iterations
+    result = AutoLyap.IterationDependent.search_lyapunov(
         problem,
         algorithm,
         10, # Iteration budget K
@@ -330,12 +377,13 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    c = result["c_K"]
 
     # Step 5: Add Tests
     println("[👓 ] Computed Nesterov FGM sublinear rate constant (c): $c")
 
-    # The Python script outputs the constant `c`.
-    @test successful == true
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
     @test !isnothing(c)
     # The expected value is obtained by running the Python script.
     @test c ≈ 0.011026816265736821 atol = atol_input
@@ -366,8 +414,8 @@ end
     )
 
     # Step 4: Verifying the Performance Rate
-    # Directly call the verify function for K=10 iterations
-    (successful, c) = AutoLyap.IterationDependent.verify_iteration_dependent_Lyapunov(
+    # Directly call search_lyapunov for K=10 iterations
+    result = AutoLyap.IterationDependent.search_lyapunov(
         problem,
         algorithm,
         10, # Iteration budget K
@@ -378,12 +426,13 @@ end
         solver = solver_val,
         show_output = show_output_val
     )
+    c = result["c_K"]
 
     # Step 5: Add Tests
     println("[👟 ] Computed OGM sublinear rate constant (c): $c")
 
-    # The Python script outputs the constant `c`.
-    @test successful == true
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
     @test !isnothing(c)
     # The expected value is obtained by running the Python script.
     @test c ≈ 0.0062865073712335415 atol = atol_input
@@ -411,8 +460,8 @@ end
     )
 
     # Step 4: Verifying the Performance Rate
-    # Directly call the verify function with rho=1.0, h=1, alpha=1
-    successful = AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov(
+    # Directly call search_lyapunov with rho=1.0, h=1, alpha=1
+    result = AutoLyap.IterationIndependent.search_lyapunov(
         problem,
         algorithm,
         P,
@@ -427,10 +476,10 @@ end
     )
 
     # Step 5: Add Tests
-    println("[💐 ] Verified Chambolle-Pock sublinear convergence: $successful")
+    println("[💐 ] Verified Chambolle-Pock sublinear convergence status: ", result["status"])
 
-    # The Python script's output `successful` is a boolean.
-    @test successful == true
+    @test result["status"] == "feasible"
+    @test !isnothing(result["certificate"])
 end
 
 
@@ -447,7 +496,7 @@ end
 
     (P, p, T, t) = AutoLyap.IterationIndependent.get_parameters_linear_function_value_suboptimality(algorithm)
 
-    result = AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov(
+    result = AutoLyap.IterationIndependent.search_lyapunov(
         problem,
         algorithm,
         P,
@@ -460,12 +509,24 @@ end
         return_full_model=true
     )
 
-    @test result.successful == true
-    @test result.status in (JuMP.OPTIMAL, JuMP.ALMOST_OPTIMAL)
-    @test result.objective_value === nothing
-    @test result.model isa JuMP.Model
+    @test all(k -> haskey(result, k), ("status", "solve_status", "rho", "certificate", "full_model"))
+    @test result["status"] == "feasible"
+    @test result["rho"] ≈ 1.0 atol = atol_input
+    @test result["certificate"] !== nothing
 
-    dv = result.decision_values
+    cert = result["certificate"]
+    @test all(k -> haskey(cert, k), ("Q", "S", "q", "s", "multipliers"))
+    @test cert["q"] !== nothing
+    @test cert["s"] !== nothing
+    @test all(k -> haskey(cert["multipliers"], k), ("operator_lambda", "function_lambda", "function_nu"))
+
+    full_model = result["full_model"]
+    @test full_model.successful == true
+    @test full_model.status in (JuMP.OPTIMAL, JuMP.ALMOST_OPTIMAL)
+    @test full_model.objective_value === nothing
+    @test full_model.model isa JuMP.Model
+
+    dv = full_model.decision_values
     @test dv.Q.is_decision == true
     @test dv.S.is_decision == true
     @test dv.q !== nothing
@@ -498,7 +559,7 @@ end
 
     (P, p, T, t) = AutoLyap.IterationIndependent.get_parameters_linear_function_value_suboptimality(algorithm)
 
-    result = AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov(
+    result = AutoLyap.IterationIndependent.search_lyapunov(
         problem,
         algorithm,
         P,
@@ -515,7 +576,9 @@ end
         return_full_model=true
     )
 
-    dv = result.decision_values
+    @test all(k -> haskey(result, k), ("status", "solve_status", "rho", "certificate", "full_model"))
+    @test result["status"] == "feasible"
+    dv = result["full_model"].decision_values
     @test dv.Q.is_decision == false
     @test dv.S.is_decision == false
     @test dv.q !== nothing
@@ -539,7 +602,7 @@ end
     (Q_0, q_0) = AutoLyap.IterationDependent.get_parameters_distance_to_solution(algorithm, 0)
     (Q_K, q_K) = AutoLyap.IterationDependent.get_parameters_function_value_suboptimality(algorithm, 10)
 
-    result = AutoLyap.IterationDependent.verify_iteration_dependent_Lyapunov(
+    result = AutoLyap.IterationDependent.search_lyapunov(
         problem,
         algorithm,
         10,
@@ -552,15 +615,29 @@ end
         return_full_model=true
     )
 
-    @test result.successful == true
-    @test result.status in (JuMP.OPTIMAL, JuMP.ALMOST_OPTIMAL)
-    @test result.objective_value isa Float64
-    @test isfinite(result.objective_value)
-    @test result.model isa JuMP.Model
+    @test all(k -> haskey(result, k), ("status", "solve_status", "c_K", "certificate", "full_model"))
+    @test result["status"] == "feasible"
+    @test result["c_K"] isa Float64
+    @test isfinite(result["c_K"])
+    @test result["certificate"] !== nothing
 
-    dv = result.decision_values
+    cert = result["certificate"]
+    @test all(k -> haskey(cert, k), ("Q_sequence", "q_sequence", "multipliers"))
+    @test length(cert["Q_sequence"]) == 11
+    @test cert["q_sequence"] !== nothing
+    @test length(cert["q_sequence"]) == 11
+    @test all(k -> haskey(cert["multipliers"], k), ("operator_lambda", "function_lambda", "function_nu"))
+
+    full_model = result["full_model"]
+    @test full_model.successful == true
+    @test full_model.status in (JuMP.OPTIMAL, JuMP.ALMOST_OPTIMAL)
+    @test full_model.objective_value isa Float64
+    @test isfinite(full_model.objective_value)
+    @test full_model.model isa JuMP.Model
+
+    dv = full_model.decision_values
     @test dv.c.is_decision == true
-    @test dv.c.value ≈ result.objective_value atol = atol_input
+    @test dv.c.value ≈ full_model.objective_value atol = atol_input
     @test dv.Q[0].is_decision == false
     @test dv.Q[10].is_decision == false
     @test all(dv.Q[k].is_decision for k in 1:9)
@@ -587,9 +664,119 @@ end
     @test AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.ALMOST_OPTIMAL) === nothing
     @test_throws ErrorException AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE)
     @test_throws ErrorException AutoLyap.IterationIndependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE_OR_UNBOUNDED)
+    @test AutoLyap.IterationIndependent._classify_search_status(JuMP.OPTIMAL) == "feasible"
+    @test AutoLyap.IterationIndependent._classify_search_status(JuMP.ALMOST_OPTIMAL) == "feasible"
+    @test AutoLyap.IterationIndependent._classify_search_status(JuMP.INFEASIBLE) == "infeasible"
+    @test AutoLyap.IterationIndependent._classify_search_status(JuMP.INFEASIBLE_OR_UNBOUNDED) == "infeasible"
+    @test AutoLyap.IterationIndependent._classify_search_status(JuMP.TIME_LIMIT) == "not_solved"
 
     @test AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.OPTIMAL) === nothing
     @test AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.ALMOST_OPTIMAL) === nothing
     @test_throws ErrorException AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE)
     @test_throws ErrorException AutoLyap.IterationDependent._assert_full_model_status("tmp_fn", JuMP.INFEASIBLE_OR_UNBOUNDED)
+    @test AutoLyap.IterationDependent._classify_search_status(JuMP.OPTIMAL) == "feasible"
+    @test AutoLyap.IterationDependent._classify_search_status(JuMP.ALMOST_OPTIMAL) == "feasible"
+    @test AutoLyap.IterationDependent._classify_search_status(JuMP.INFEASIBLE) == "infeasible"
+    @test AutoLyap.IterationDependent._classify_search_status(JuMP.INFEASIBLE_OR_UNBOUNDED) == "infeasible"
+    @test AutoLyap.IterationDependent._classify_search_status(JuMP.TIME_LIMIT) == "not_solved"
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Removed verify_* aliases
+# ==============================================================================
+@testset "Removed verify aliases throw migration errors" begin
+    @test_throws r"search_lyapunov" AutoLyap.IterationIndependent.verify_iteration_independent_Lyapunov()
+    @test_throws r"search_lyapunov" AutoLyap.IterationDependent.verify_iteration_dependent_Lyapunov()
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Iteration-Dependent State-Component Parameter Generators
+# ==============================================================================
+@testset "Iteration-Dependent State-Component Parameter Generators" begin
+    algo_func = NesterovFastGradientMethod(gamma = 1.0) # n=2, m_func=1
+    k = 3
+
+    # Distance-to-solution for a state component
+    (Q_dist, q_dist) = AutoLyap.IterationDependent.get_parameters_state_component_distance_to_solution(
+        algo_func, k; ell=2
+    )
+    Xs = AutoLyap.get_Xs(algo_func, k, k)
+    Ys = AutoLyap.get_Ys(algo_func, k, k)
+    Ps = AutoLyap.get_Ps(algo_func)
+    e2 = zeros(1, algo_func.n)
+    e2[1, 2] = 1.0
+    diff_dist = e2 * Xs[k] - Ps[(1, "star")] * Ys["star"]
+    @test Q_dist ≈ diff_dist' * diff_dist atol = atol_input
+    @test q_dist ≈ zeros(algo_func.m_bar_func + algo_func.m_func) atol = atol_input
+
+    # Cross-iteration state-component difference
+    (Q_cross, q_cross) = AutoLyap.IterationDependent.get_parameters_state_component_cross_iteration_difference(
+        algo_func, k; ell=1, ell_prime=2
+    )
+    e1 = zeros(1, algo_func.n)
+    e1[1, 1] = 1.0
+    diff_cross = e1 * Xs[k + 1] - e2 * Xs[k]
+    @test Q_cross ≈ diff_cross' * diff_cross atol = atol_input
+    @test q_cross ≈ zeros(algo_func.m_bar_func + algo_func.m_func) atol = atol_input
+
+    # Same-iteration state-component difference
+    (Q_same, q_same) = AutoLyap.IterationDependent.get_parameters_state_component_difference(
+        algo_func, k; ell=2, ell_prime=1
+    )
+    diff_same = e2 * Xs[k] - e1 * Xs[k]
+    @test Q_same ≈ diff_same' * diff_same atol = atol_input
+    @test q_same ≈ zeros(algo_func.m_bar_func + algo_func.m_func) atol = atol_input
+
+    # Operator-only algorithm should return only Q_k (no q_k tuple)
+    algo_op = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version = true)
+    @test AutoLyap.IterationDependent.get_parameters_state_component_distance_to_solution(algo_op, 0; ell=1) isa Matrix
+    @test AutoLyap.IterationDependent.get_parameters_state_component_cross_iteration_difference(algo_op, 0; ell=1, ell_prime=1) isa Matrix
+    @test AutoLyap.IterationDependent.get_parameters_state_component_difference(algo_op, 0; ell=1, ell_prime=1) isa Matrix
+
+    # Input validation
+    @test_throws ArgumentError AutoLyap.IterationDependent.get_parameters_state_component_distance_to_solution(algo_func, 0; ell=0)
+    @test_throws ArgumentError AutoLyap.IterationDependent.get_parameters_state_component_cross_iteration_difference(algo_func, 0; ell=1, ell_prime=0)
+    @test_throws ArgumentError AutoLyap.IterationDependent.get_parameters_state_component_difference(algo_func, -1; ell=1, ell_prime=1)
+end
+
+
+# ==============================================================================
+# NEW TEST CASE: Nesterov/TripleMomentum mu-L to sigma-beta Mapping
+# ==============================================================================
+@testset "Nesterov and TripleMomentum Parameter Mapping" begin
+    μ = 1.0
+    L = 4.0
+    q = μ / L
+    sqrt_q = sqrt(q)
+
+    # NesterovConstant(mu, L) in Python maps to NesterovConstant(sigma=mu, beta=L) in Julia.
+    nesterov_alg = NesterovConstant(sigma = μ, beta = L)
+    A_n, B_n, C_n, D_n = AutoLyap.get_ABCD(nesterov_alg, 0)
+    A_n_expected = [2 / (1 + sqrt_q)  -(1 - sqrt_q) / (1 + sqrt_q);
+                    1.0               0.0]
+    B_n_expected = [-1 / L; 0.0]
+    C_n_expected = [2 / (1 + sqrt_q)  -(1 - sqrt_q) / (1 + sqrt_q)]
+    D_n_expected = [0.0;;]
+    @test A_n ≈ A_n_expected atol = atol_input
+    @test B_n ≈ B_n_expected atol = atol_input
+    @test C_n ≈ C_n_expected atol = atol_input
+    @test D_n ≈ D_n_expected atol = atol_input
+
+    # TripleMomentum(mu, L) in Python maps to TripleMomentum(sigma=mu, beta=L) in Julia.
+    triple_alg = TripleMomentum(sigma = μ, beta = L)
+    A_t, B_t, C_t, D_t = AutoLyap.get_ABCD(triple_alg, 0)
+    α_tm = (2 - sqrt_q) / L
+    β_tm = (1 - sqrt_q)^2 / (1 + sqrt_q)
+    γ_tm = (1 - sqrt_q)^2 / ((2 - sqrt_q) * (1 + sqrt_q))
+    A_t_expected = [1 + β_tm  -β_tm;
+                    1.0       0.0]
+    B_t_expected = [-α_tm; 0.0]
+    C_t_expected = [1 + γ_tm  -γ_tm]
+    D_t_expected = [0.0;;]
+    @test A_t ≈ A_t_expected atol = atol_input
+    @test B_t ≈ B_t_expected atol = atol_input
+    @test C_t ≈ C_t_expected atol = atol_input
+    @test D_t ≈ D_t_expected atol = atol_input
 end

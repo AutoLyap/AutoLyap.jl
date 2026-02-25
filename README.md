@@ -86,7 +86,7 @@ algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=tr
 # Step 4: Finding the Best Convergence Rate via an SDP
 # ----------------------------------------------------------------------
 
-rho = IterationIndependent.bisection_search_rho(
+result = IterationIndependent.bisection_search_rho(
     problem,
     algorithm,
     P,
@@ -97,12 +97,14 @@ rho = IterationIndependent.bisection_search_rho(
     solver = solver_val,
     show_output = show_output_val
 )
+rho = result["rho"]
 
 # ----------------------------------------------------------------------
 # Step 5: Output
 # ----------------------------------------------------------------------
 
 println("[ 🎎 ] Computed DRS convergence rate (rho) for (StronglyMonotone + Lipschitz): $rho") #$
+println("Bisection status: ", result["status"])
 ```
 
 For other examples, please see the examples in the `test/runtests.jl` folder.
@@ -112,6 +114,3 @@ Please report any issues via the [Github issue tracker](https://github.com/AutoL
 
 ## Contact
 Please feel free to contact us regarding any subject including but not limited to comments about this repo, performance estimation problems in general, implementation for a specific research problem, or just to say hi 😃!
-
-
-

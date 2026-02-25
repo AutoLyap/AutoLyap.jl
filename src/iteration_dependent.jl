@@ -13,9 +13,12 @@ end
 using ..ProblemClass
 using ..Algorithms
 
-export verify_iteration_dependent_Lyapunov,
+export search_lyapunov,
     # Performance metric generators
     get_parameters_distance_to_solution,
+    get_parameters_state_component_distance_to_solution,
+    get_parameters_state_component_cross_iteration_difference,
+    get_parameters_state_component_difference,
     get_parameters_function_value_suboptimality,
     get_parameters_fixed_point_residual,
     get_parameters_optimality_measure
@@ -160,8 +163,71 @@ end
 _to_float_scalar(x::VariableRef) = Float64(value(x))
 _to_float_scalar(x::Number) = Float64(x)
 
+function _is_mosek_license_error(e)
+    return isdefined(Mosek, :LicenseError) && e isa getfield(Mosek, :LicenseError)
+end
+
+const _SEARCH_STATUS_FEASIBLE = "feasible"
+const _SEARCH_STATUS_INFEASIBLE = "infeasible"
+const _SEARCH_STATUS_NOT_SOLVED = "not_solved"
+
+function _classify_search_status(status)
+    if status in (OPTIMAL, ALMOST_OPTIMAL)
+        return _SEARCH_STATUS_FEASIBLE
+    elseif status in (INFEASIBLE, INFEASIBLE_OR_UNBOUNDED)
+        return _SEARCH_STATUS_INFEASIBLE
+    end
+    return _SEARCH_STATUS_NOT_SOLVED
+end
+
+function _serialize_pair(pair::Tuple)
+    j, k = pair
+    j_val = (j == "star") ? "star" : Int(j)
+    k_val = (k == "star") ? "star" : Int(k)
+    return Dict{String,Any}("j" => j_val, "k" => k_val)
+end
+
+function _serialize_iteration_dependent_certificate(Qs, qs, multiplier_records, algo::Algorithm, K::Int)
+    operator_lambda = Vector{Dict{String,Any}}()
+    function_lambda = Vector{Dict{String,Any}}()
+    function_nu = Vector{Dict{String,Any}}()
+
+    for rec in multiplier_records
+        entry = Dict{String,Any}(
+            "k" => Int(rec.k),
+            "component" => Int(rec.component),
+            "interpolation_index" => Int(rec.interpolation_entry) - 1,
+            "pairs" => [_serialize_pair(p) for p in rec.pairs],
+            "value" => _to_float_scalar(rec.variable),
+        )
+
+        if rec.component in algo.I_op
+            push!(operator_lambda, entry)
+        elseif rec.is_equality_multiplier
+            push!(function_nu, entry)
+        else
+            push!(function_lambda, entry)
+        end
+    end
+
+    q_sequence = nothing
+    if algo.m_func > 0
+        q_sequence = [_to_float_vector(qs[k]) for k in 0:K]
+    end
+
+    return Dict{String,Any}(
+        "Q_sequence" => [_to_float_matrix(Qs[k]) for k in 0:K],
+        "q_sequence" => q_sequence,
+        "multipliers" => Dict{String,Any}(
+            "operator_lambda" => operator_lambda,
+            "function_lambda" => function_lambda,
+            "function_nu" => function_nu,
+        ),
+    )
+end
+
 #=  
-    verify_iteration_dependent_Lyapunov(prob::InclusionProblem, algo::Algorithm, K::Int, Q_0::Matrix, Q_K::Matrix, q_0::Union{Vector, Nothing}=nothing, q_K::Union{Vector, Nothing}=nothing; solver=:clarabel, show_output=:on, return_full_model=false)
+    search_lyapunov(prob::InclusionProblem, algo::Algorithm, K::Int, Q_0::Matrix, Q_K::Matrix, q_0::Union{Vector, Nothing}=nothing, q_K::Union{Vector, Nothing}=nothing; solver=:clarabel, show_output=:on, return_full_model=false)
 
 Verify a chain of iteration-dependent Lyapunov inequalities via an SDP.
 
@@ -178,17 +244,16 @@ q_0: A vector for functional components (if any), with appropriate dimensions, U
 q_K: A vector for functional components (if any), with appropriate dimensions, Union{Vector, Nothing} (optional, default=nothing)
 solver: Solver to use (:mosek,  :clarabel, :copt, :scs, :cosmo), Symbol (keyword, default=:clarabel)
 show_output: Whether to show solver output (:on or :off), Symbol (keyword, default=:on)
-return_full_model: If true, returns a full solution snapshot with status, decision-variable values, and model. If false, returns the legacy tuple output, Bool (keyword, default=false)
+return_full_model: If true, appends Julia-specific debug payload with status, objective, decision-variable values, and model. If false, returns Python-style dictionary output, Bool (keyword, default=false)
 
 Output to the function
 =================== 
-If return_full_model == false: a tuple $(true, c)$ if the SDP is solved successfully, or $(false, nothing)$ otherwise.
-If return_full_model == true: a NamedTuple with fields successful, status, objective_value, decision_values, and model.
-In full-model mode, non-(OPTIMAL/ALMOST_OPTIMAL) statuses throw an error.
+Returns a dictionary with keys `"status"`, `"solve_status"`, `"c_K"`, and `"certificate"`.
+If `return_full_model == true`, the dictionary additionally contains `"full_model"` with Julia-specific debug payload.
 
 =#
 
-function verify_iteration_dependent_Lyapunov(
+function search_lyapunov(
     prob::InclusionProblem,
     algo::Algorithm,
     K::Int,
@@ -369,8 +434,30 @@ function verify_iteration_dependent_Lyapunov(
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"
         end
+        classified_status = _classify_search_status(status)
+        solve_status = string(status)
+
+        if classified_status != _SEARCH_STATUS_FEASIBLE
+            return Dict{String,Any}(
+                "status" => classified_status,
+                "solve_status" => solve_status,
+                "c_K" => nothing,
+                "certificate" => nothing,
+            )
+        end
+
+        c_value = _to_float_scalar(c)
+        certificate = _serialize_iteration_dependent_certificate(Qs, qs, multiplier_records, algo, K)
+
+        result = Dict{String,Any}(
+            "status" => _SEARCH_STATUS_FEASIBLE,
+            "solve_status" => solve_status,
+            "c_K" => c_value,
+            "certificate" => certificate,
+        )
+
         if return_full_model
-            _assert_full_model_status("verify_iteration_dependent_Lyapunov", status)
+            _assert_full_model_status("search_lyapunov", status)
 
             Q_values = Dict{Int, NamedTuple{(:value, :is_decision), Tuple{Matrix{Float64}, Bool}}}()
             for k_idx in 0:K
@@ -399,35 +486,43 @@ function verify_iteration_dependent_Lyapunov(
             ) for rec in multiplier_records]
 
             decision_values = (
-                c=(value=_to_float_scalar(c), is_decision=true),
+                c=(value=c_value, is_decision=true),
                 Q=Q_values,
                 q=q_values,
                 multipliers=multipliers
             )
 
-            return (
+            result["full_model"] = (
                 successful=true,
                 status=status,
-                objective_value=_to_float_scalar(c),
+                objective_value=c_value,
                 decision_values=decision_values,
                 model=model
             )
         end
 
-        if status in (OPTIMAL, INFEASIBLE_OR_UNBOUNDED, ALMOST_OPTIMAL)
-            return (true, value(c))
-            if status == ALMOST_OPTIMAL
-                @warn "[💀 ] The solver returned ALMOST_OPTIMAL, the value of c may not be reliable..."
-            end
-        else
-            return (false, nothing)
+        if status == ALMOST_OPTIMAL
+            @warn "[💀 ] The solver returned ALMOST_OPTIMAL, the value of c may not be reliable..."
         end
+        return result
     catch e
-        if e isa Mosek.LicenseError || return_full_model
+        if _is_mosek_license_error(e)
             rethrow(e)
         end
-        return (false, nothing)
+        return Dict{String,Any}(
+            "status" => _SEARCH_STATUS_NOT_SOLVED,
+            "solve_status" => "solver_error",
+            "c_K" => nothing,
+            "certificate" => nothing,
+        )
     end
+end
+
+function verify_iteration_dependent_Lyapunov(args...; kwargs...)
+    throw(ErrorException(
+        "IterationDependent.verify_iteration_dependent_Lyapunov was removed. " *
+        "Use IterationDependent.search_lyapunov instead."
+    ))
 end
 
 
@@ -478,6 +573,171 @@ function get_parameters_distance_to_solution(algo::Algorithm, k::Int; i=1, j=1)
     k >= 0 || throw(ArgumentError("k must be non-negative."))
     Ys, Ps = get_Ys(algo, k, k), get_Ps(algo)
     diff = Ps[(i, j)] * Ys[k] - Ps[(i, "star")] * Ys["star"]
+    Q_k = diff' * diff
+
+    if algo.m_func > 0
+        dim_q = algo.m_bar_func + algo.m_func
+        return Q_k, zeros(dim_q)
+    else
+        return Q_k
+    end
+end
+
+#=
+    get_parameters_state_component_distance_to_solution(algo::Algorithm, k::Int; ell=1)
+
+Compute the matrices for the state-component distance-to-solution metric at iteration k:
+
+$$Q_k = \left(e_\ell^\top X_k^{k,k} - P_{(1,\star)}Y_\star^{k,k}\right)^\top
+        \left(e_\ell^\top X_k^{k,k} - P_{(1,\star)}Y_\star^{k,k}\right),$$
+
+and
+
+$$q_k = 0 \quad \text{(if functional components exist)}.$$
+
+Input to the function:
+==================
+algo: Algorithm instance
+k: Iteration index (must satisfy k ≥ 0), Int
+ell: State component index (must satisfy 1 ≤ ell ≤ algo.n), Int (keyword, default=1)
+
+Output to the function
+===================
+If algo.m_func == 0: Q_k
+Otherwise: A tuple (Q_k, q_k)
+=#
+function get_parameters_state_component_distance_to_solution(algo::Algorithm, k::Int; ell=1)
+    k >= 0 || throw(ArgumentError("k must be non-negative."))
+    ell isa Integer || throw(ArgumentError("ell must be an integer."))
+    ell = Int(ell)
+    (1 <= ell <= algo.n) || throw(ArgumentError("ell must be in [1, $(algo.n)]."))
+
+    Xs = get_Xs(algo, k, k)
+    haskey(Xs, k) || throw(ArgumentError("X matrix for iteration k = $k not found."))
+
+    Ys = get_Ys(algo, k, k)
+    haskey(Ys, "star") || throw(ArgumentError("Y star matrix ('star') not found."))
+
+    Ps = get_Ps(algo)
+    haskey(Ps, (1, "star")) || throw(ArgumentError("Projection matrix for component 1 star not found."))
+
+    selector = zeros(1, algo.n)
+    selector[1, ell] = 1.0
+    diff = selector * Xs[k] - Ps[(1, "star")] * Ys["star"]
+    Q_k = diff' * diff
+
+    if algo.m_func > 0
+        dim_q = algo.m_bar_func + algo.m_func
+        return Q_k, zeros(dim_q)
+    else
+        return Q_k
+    end
+end
+
+#=
+    get_parameters_state_component_cross_iteration_difference(algo::Algorithm, k::Int; ell=1, ell_prime=1)
+
+Compute the matrices for the cross-iteration state-component difference metric at iteration k:
+
+$$Q_k = \left(e_\ell^\top X_{k+1}^{k,k} - e_{\ell'}^\top X_k^{k,k}\right)^\top
+        \left(e_\ell^\top X_{k+1}^{k,k} - e_{\ell'}^\top X_k^{k,k}\right),$$
+
+and
+
+$$q_k = 0 \quad \text{(if functional components exist)}.$$
+
+Input to the function:
+==================
+algo: Algorithm instance
+k: Iteration index (must satisfy k ≥ 0), Int
+ell: State component index at k+1 (must satisfy 1 ≤ ell ≤ algo.n), Int (keyword, default=1)
+ell_prime: State component index at k (must satisfy 1 ≤ ell_prime ≤ algo.n), Int (keyword, default=1)
+
+Output to the function
+===================
+If algo.m_func == 0: Q_k
+Otherwise: A tuple (Q_k, q_k)
+=#
+function get_parameters_state_component_cross_iteration_difference(
+    algo::Algorithm,
+    k::Int;
+    ell=1,
+    ell_prime=1
+)
+    k >= 0 || throw(ArgumentError("k must be non-negative."))
+    ell isa Integer || throw(ArgumentError("ell must be an integer."))
+    ell_prime isa Integer || throw(ArgumentError("ell_prime must be an integer."))
+    ell = Int(ell)
+    ell_prime = Int(ell_prime)
+    (1 <= ell <= algo.n) || throw(ArgumentError("ell must be in [1, $(algo.n)]."))
+    (1 <= ell_prime <= algo.n) || throw(ArgumentError("ell_prime must be in [1, $(algo.n)]."))
+
+    Xs = get_Xs(algo, k, k)
+    (haskey(Xs, k) && haskey(Xs, k + 1)) || throw(ArgumentError("X matrices for iterations $k and $(k+1) not found."))
+
+    selector_ell = zeros(1, algo.n)
+    selector_ell[1, ell] = 1.0
+    selector_ell_prime = zeros(1, algo.n)
+    selector_ell_prime[1, ell_prime] = 1.0
+
+    diff = selector_ell * Xs[k + 1] - selector_ell_prime * Xs[k]
+    Q_k = diff' * diff
+
+    if algo.m_func > 0
+        dim_q = algo.m_bar_func + algo.m_func
+        return Q_k, zeros(dim_q)
+    else
+        return Q_k
+    end
+end
+
+#=
+    get_parameters_state_component_difference(algo::Algorithm, k::Int; ell=1, ell_prime=1)
+
+Compute the matrices for the same-iteration state-component difference metric at iteration k:
+
+$$Q_k = \left(e_\ell^\top X_k^{k,k} - e_{\ell'}^\top X_k^{k,k}\right)^\top
+        \left(e_\ell^\top X_k^{k,k} - e_{\ell'}^\top X_k^{k,k}\right),$$
+
+and
+
+$$q_k = 0 \quad \text{(if functional components exist)}.$$
+
+Input to the function:
+==================
+algo: Algorithm instance
+k: Iteration index (must satisfy k ≥ 0), Int
+ell: State component index (must satisfy 1 ≤ ell ≤ algo.n), Int (keyword, default=1)
+ell_prime: State component index (must satisfy 1 ≤ ell_prime ≤ algo.n), Int (keyword, default=1)
+
+Output to the function
+===================
+If algo.m_func == 0: Q_k
+Otherwise: A tuple (Q_k, q_k)
+=#
+function get_parameters_state_component_difference(
+    algo::Algorithm,
+    k::Int;
+    ell=1,
+    ell_prime=1
+)
+    k >= 0 || throw(ArgumentError("k must be non-negative."))
+    ell isa Integer || throw(ArgumentError("ell must be an integer."))
+    ell_prime isa Integer || throw(ArgumentError("ell_prime must be an integer."))
+    ell = Int(ell)
+    ell_prime = Int(ell_prime)
+    (1 <= ell <= algo.n) || throw(ArgumentError("ell must be in [1, $(algo.n)]."))
+    (1 <= ell_prime <= algo.n) || throw(ArgumentError("ell_prime must be in [1, $(algo.n)]."))
+
+    Xs = get_Xs(algo, k, k)
+    haskey(Xs, k) || throw(ArgumentError("X matrix for iteration k = $k not found."))
+
+    selector_ell = zeros(1, algo.n)
+    selector_ell[1, ell] = 1.0
+    selector_ell_prime = zeros(1, algo.n)
+    selector_ell_prime[1, ell_prime] = 1.0
+
+    diff = selector_ell * Xs[k] - selector_ell_prime * Xs[k]
     Q_k = diff' * diff
 
     if algo.m_func > 0

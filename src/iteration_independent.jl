@@ -14,7 +14,7 @@ end
 using ..ProblemClass
 using ..Algorithms
 
-export verify_iteration_independent_Lyapunov, bisection_search_rho,
+export search_lyapunov, bisection_search_rho,
     # Performance metric generators
     get_parameters_distance_to_solution,
     get_parameters_linear_function_value_suboptimality,    
@@ -169,8 +169,75 @@ end
 _to_float_scalar(x::VariableRef) = Float64(value(x))
 _to_float_scalar(x::Number) = Float64(x)
 
+function _is_mosek_license_error(e)
+    return isdefined(Mosek, :LicenseError) && e isa getfield(Mosek, :LicenseError)
+end
+
+const _SEARCH_STATUS_FEASIBLE = "feasible"
+const _SEARCH_STATUS_INFEASIBLE = "infeasible"
+const _SEARCH_STATUS_NOT_SOLVED = "not_solved"
+
+function _classify_search_status(status)
+    if status in (OPTIMAL, ALMOST_OPTIMAL)
+        return _SEARCH_STATUS_FEASIBLE
+    elseif status in (INFEASIBLE, INFEASIBLE_OR_UNBOUNDED)
+        return _SEARCH_STATUS_INFEASIBLE
+    end
+    return _SEARCH_STATUS_NOT_SOLVED
+end
+
+function _serialize_pair(pair::Tuple)
+    j, k = pair
+    j_val = (j == "star") ? "star" : Int(j)
+    k_val = (k == "star") ? "star" : Int(k)
+    return Dict{String,Any}("j" => j_val, "k" => k_val)
+end
+
+function _serialize_iteration_independent_certificate(
+    Q,
+    S,
+    q,
+    s,
+    multiplier_records,
+    algo::Algorithm
+)
+    operator_lambda = Vector{Dict{String,Any}}()
+    function_lambda = Vector{Dict{String,Any}}()
+    function_nu = Vector{Dict{String,Any}}()
+
+    for rec in multiplier_records
+        entry = Dict{String,Any}(
+            "condition" => String(rec.condition),
+            "component" => Int(rec.component),
+            "interpolation_index" => Int(rec.interpolation_entry) - 1,
+            "pairs" => [_serialize_pair(p) for p in rec.pairs],
+            "value" => _to_float_scalar(rec.variable),
+        )
+
+        if rec.component in algo.I_op
+            push!(operator_lambda, entry)
+        elseif rec.is_equality_multiplier
+            push!(function_nu, entry)
+        else
+            push!(function_lambda, entry)
+        end
+    end
+
+    return Dict{String,Any}(
+        "Q" => _to_float_matrix(Q),
+        "S" => _to_float_matrix(S),
+        "q" => (q === nothing ? nothing : _to_float_vector(q)),
+        "s" => (s === nothing ? nothing : _to_float_vector(s)),
+        "multipliers" => Dict{String,Any}(
+            "operator_lambda" => operator_lambda,
+            "function_lambda" => function_lambda,
+            "function_nu" => function_nu,
+        ),
+    )
+end
+
 #=  
-    verify_iteration_independent_Lyapunov(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; rho::Float64=1.0, h::Int=0, alpha::Int=0, Q_equals_P=false, S_equals_T=false, q_equals_p=false, s_equals_t=false, remove_C2=false, remove_C3=false, remove_C4=true, solver=:clarabel, show_output=false, return_full_model=false)
+    search_lyapunov(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; rho::Float64=1.0, h::Int=0, alpha::Int=0, Q_equals_P=false, S_equals_T=false, q_equals_p=false, s_equals_t=false, remove_C2=false, remove_C3=false, remove_C4=true, solver=:clarabel, show_output=false, return_full_model=false)
 
 Verify an iteration-independent Lyapunov inequality via an SDP.
 
@@ -200,13 +267,12 @@ return_full_model: If true, returns a full solution snapshot with status, decisi
 
 Output to the function
 =================== 
-If return_full_model == false: true if the SDP is solved successfully (i.e. a Lyapunov inequality exists), false otherwise.
-If return_full_model == true: a NamedTuple with fields successful, status, objective_value (nothing), decision_values, and model.
-In full-model mode, non-(OPTIMAL/ALMOST_OPTIMAL) statuses throw an error.
+Returns a dictionary with keys `"status"`, `"solve_status"`, `"rho"`, and `"certificate"`.
+If `return_full_model == true`, the dictionary additionally contains `"full_model"` with Julia-specific debug payload.
 
 =#
 
-function verify_iteration_independent_Lyapunov(
+function search_lyapunov(
     prob::InclusionProblem,
     algo::Algorithm,
     P::Matrix, T::Matrix,
@@ -395,8 +461,30 @@ function verify_iteration_independent_Lyapunov(
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"
         end
+
+        classified_status = _classify_search_status(status)
+        solve_status = string(status)
+
+        if classified_status != _SEARCH_STATUS_FEASIBLE
+            return Dict{String,Any}(
+                "status" => classified_status,
+                "solve_status" => solve_status,
+                "rho" => Float64(rho),
+                "certificate" => nothing,
+            )
+        end
+
+        certificate = _serialize_iteration_independent_certificate(Q, S, q, s, multiplier_records, algo)
+
+        result = Dict{String,Any}(
+            "status" => _SEARCH_STATUS_FEASIBLE,
+            "solve_status" => solve_status,
+            "rho" => Float64(rho),
+            "certificate" => certificate,
+        )
+
         if return_full_model
-            _assert_full_model_status("verify_iteration_independent_Lyapunov", status)
+            _assert_full_model_status("search_lyapunov", status)
 
             q_entry = nothing
             s_entry = nothing
@@ -424,7 +512,7 @@ function verify_iteration_independent_Lyapunov(
                 multipliers=multipliers
             )
 
-            return (
+            result["full_model"] = (
                 successful=true,
                 status=status,
                 objective_value=nothing,
@@ -433,21 +521,35 @@ function verify_iteration_independent_Lyapunov(
             )
         end
 
-        return status in (OPTIMAL, ALMOST_OPTIMAL) # Mosek returns this for feasibility problems
+        return result
     catch e
-        # Suppress solver errors other than licensing issues
-        if e isa Mosek.LicenseError || return_full_model
+        # Preserve existing behavior for explicit license errors.
+        if _is_mosek_license_error(e)
             rethrow(e)
         end
-        return false
+
+        return Dict{String,Any}(
+            "status" => _SEARCH_STATUS_NOT_SOLVED,
+            "solve_status" => "solver_error",
+            "rho" => Float64(rho),
+            "certificate" => nothing,
+        )
     end
 end
+
+function verify_iteration_independent_Lyapunov(args...; kwargs...)
+    throw(ErrorException(
+        "IterationIndependent.verify_iteration_independent_Lyapunov was removed. " *
+        "Use IterationIndependent.search_lyapunov instead."
+    ))
+end
+
 #=  
     bisection_search_rho(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; lower_bound::Float64=0.0, upper_bound::Float64=1.0, tol::Float64=1e-12, h::Int=0, alpha::Int=0, Q_equals_P::Bool=false, S_equals_T::Bool=false, q_equals_p::Bool=false, s_equals_t::Bool=false, remove_C2::Bool=false, remove_C3::Bool=false, remove_C4::Bool=true)
 
 Perform a bisection search to find the minimal contraction parameter $\rho$.
 
-This method performs a bisection search over $\rho$ in the interval $[\text{lower\_bound}, \text{upper\_bound}]$ to find the minimal value for which the iteration-independent Lyapunov inequality holds. At each iteration it calls `verify_iteration_independent_Lyapunov` until the interval size is below $\text{tol}$.
+This method performs a bisection search over $\rho$ in the interval $[\text{lower\_bound}, \text{upper\_bound}]$ to find the minimal value for which the iteration-independent Lyapunov inequality holds. At each iteration it calls `search_lyapunov` until the interval size is below $\text{tol}$.
 
 Input to the function:
 ==================      
@@ -472,14 +574,16 @@ remove_C4: Flag to remove constraint C4, Bool (keyword, default=true)
 
 Output to the function
 =================== 
-The minimal $\rho$ in $[\text{lower\_bound}, \text{upper\_bound}]$ that verifies the Lyapunov inequality within tolerance $\text{tol}$, or `nothing` if the inequality does not hold at the upper bound.
+Returns a dictionary with keys `"status"`, `"solve_status"`, `"rho"`, and `"certificate"`.
+If `"status" == "feasible"`, then `"rho"` contains the terminal bisection value and `"certificate"` contains the feasibility certificate.
+Otherwise, `"rho"` and `"certificate"` are `nothing`.
 
 =#
 
 function bisection_search_rho(
     prob, algo, P, T, p=nothing, t=nothing;
     lower_bound=0.0, upper_bound=1.0, tol=1e-12,
-    # Pass-through keyword arguments for verify_...
+    # Pass-through keyword arguments for search_lyapunov
     h=0, alpha=0, Q_equals_P=false, S_equals_T=false,
     q_equals_p=false, s_equals_t=false,
     remove_C2=false, remove_C3=false, remove_C4=true,
@@ -488,25 +592,52 @@ function bisection_search_rho(
 )
 
     # Define the pass-through arguments in a NamedTuple for clarity
-    verify_kwargs = (; h, alpha, Q_equals_P, S_equals_T, q_equals_p, s_equals_t,
+    search_kwargs = (; h, alpha, Q_equals_P, S_equals_T, q_equals_p, s_equals_t,
         remove_C2, remove_C3, remove_C4)
 
     # Check if a solution exists at the upper bound
-    # We splat the verify_kwargs into the call
-    if !verify_iteration_independent_Lyapunov(prob, algo, P, T, p, t; rho=upper_bound, solver = solver, show_output = show_output, verify_kwargs...)
-        return nothing
+    # We splat the search_kwargs into the call
+    upper_result = search_lyapunov(prob, algo, P, T, p, t; rho=upper_bound, solver = solver, show_output = show_output, search_kwargs...)
+    if upper_result["status"] != _SEARCH_STATUS_FEASIBLE
+        return Dict{String,Any}(
+            "status" => upper_result["status"],
+            "solve_status" => upper_result["solve_status"],
+            "rho" => nothing,
+            "certificate" => nothing,
+        )
     end
 
     l, u = lower_bound, upper_bound
     while (u - l) > tol
         mid = (l + u) / 2
-        if verify_iteration_independent_Lyapunov(prob, algo, P, T, p, t; rho=mid, solver = solver, show_output = show_output, verify_kwargs...)
+        mid_result = search_lyapunov(prob, algo, P, T, p, t; rho=mid, solver = solver, show_output = show_output, search_kwargs...)
+        if mid_result["status"] == _SEARCH_STATUS_FEASIBLE
             u = mid
         else
             l = mid
         end
     end
-    return u
+
+    terminal_result = search_lyapunov(
+        prob, algo, P, T, p, t;
+        rho=u, solver = solver, show_output = show_output, search_kwargs...
+    )
+
+    if terminal_result["status"] == _SEARCH_STATUS_FEASIBLE
+        return Dict{String,Any}(
+            "status" => _SEARCH_STATUS_FEASIBLE,
+            "solve_status" => terminal_result["solve_status"],
+            "rho" => Float64(u),
+            "certificate" => terminal_result["certificate"],
+        )
+    end
+
+    return Dict{String,Any}(
+        "status" => terminal_result["status"],
+        "solve_status" => terminal_result["solve_status"],
+        "rho" => nothing,
+        "certificate" => nothing,
+    )
 end
 
 

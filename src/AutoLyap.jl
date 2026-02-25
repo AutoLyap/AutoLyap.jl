@@ -13,8 +13,9 @@ include("iteration_dependent.jl")
 using .Utils
 using .ProblemClass
 using .Algorithms
-using .IterationIndependent
-using .IterationDependent
+import .IterationIndependent
+import .IterationDependent
+using .IterationIndependent: bisection_search_rho
 
 # Re-export everything for the user
 # From utils.jl
@@ -48,7 +49,7 @@ export Algorithm, get_ABCD, get_AsBsCsDs, get_Us, get_Ys, get_Xs, get_Ps, get_Fs
        TripleMomentum,
        TsengFBF
 # From iteration_independent.jl
-export verify_iteration_independent_Lyapunov, bisection_search_rho
+export bisection_search_rho
 
 # get_parameters_distance_to_solution,
 # get_parameters_linear_function_value_suboptimality,
@@ -58,7 +59,6 @@ export verify_iteration_independent_Lyapunov, bisection_search_rho
 # get_parameters_optimality_measure
 
 # From iteration_dependent.jl
-export verify_iteration_dependent_Lyapunov
 # get_parameters_distance_to_solution,
 # get_parameters_function_value_suboptimality,
 # get_parameters_fixed_point_residual,
