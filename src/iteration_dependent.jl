@@ -4,7 +4,7 @@ module IterationDependent
 
 
 
-using JuMP, Mosek, MosekTools, Clarabel, COSMO, SCS, LinearAlgebra, Combinatorics, Suppressor
+using JuMP, Mosek, MosekTools, Clarabel, COSMO, SCS, SDPA, ProxSDP, Hypatia, SDPLR, LinearAlgebra, Combinatorics, Suppressor
 
 @suppress begin
     using COPT
@@ -134,10 +134,10 @@ function _compute_thetas(algo::Algorithm)
 end
 
 function _assert_full_model_status(function_name::String, status)
-    if status in (OPTIMAL, ALMOST_OPTIMAL)
+    if status in (OPTIMAL, ALMOST_OPTIMAL, LOCALLY_SOLVED, ALMOST_LOCALLY_SOLVED)
         return nothing
     end
-    throw(ErrorException("`$function_name` with `return_full_model=true` requires termination status OPTIMAL or ALMOST_OPTIMAL, got $(status)."))
+    throw(ErrorException("`$function_name` with `return_full_model=true` requires termination status OPTIMAL, ALMOST_OPTIMAL, LOCALLY_SOLVED, or ALMOST_LOCALLY_SOLVED, got $(status)."))
 end
 
 function _to_float_matrix(data)
@@ -172,12 +172,27 @@ const _SEARCH_STATUS_INFEASIBLE = "infeasible"
 const _SEARCH_STATUS_NOT_SOLVED = "not_solved"
 
 function _classify_search_status(status)
-    if status in (OPTIMAL, ALMOST_OPTIMAL)
+    if status in (OPTIMAL, ALMOST_OPTIMAL, LOCALLY_SOLVED, ALMOST_LOCALLY_SOLVED)
         return _SEARCH_STATUS_FEASIBLE
     elseif status in (INFEASIBLE, INFEASIBLE_OR_UNBOUNDED)
         return _SEARCH_STATUS_INFEASIBLE
     end
     return _SEARCH_STATUS_NOT_SOLVED
+end
+
+function _normalize_sdplr_maxrank(maxrank)
+    if maxrank === nothing
+        return nothing
+    elseif maxrank isa Bool
+        throw(ArgumentError("`maxrank` must be a positive integer or a function `(m, n) -> r`; received Bool."))
+    elseif maxrank isa Integer
+        rank_val = Int(maxrank)
+        rank_val > 0 || throw(ArgumentError("`maxrank` must be a positive integer when provided as a scalar."))
+        return (m, n) -> rank_val
+    elseif maxrank isa Function
+        return maxrank
+    end
+    throw(ArgumentError("`maxrank` must be either `nothing`, a positive integer, or a function `(m, n) -> r`."))
 end
 
 function _serialize_pair(pair::Tuple)
@@ -227,7 +242,7 @@ function _serialize_iteration_dependent_certificate(Qs, qs, multiplier_records, 
 end
 
 #=  
-    search_lyapunov(prob::InclusionProblem, algo::Algorithm, K::Int, Q_0::Matrix, Q_K::Matrix, q_0::Union{Vector, Nothing}=nothing, q_K::Union{Vector, Nothing}=nothing; solver=:clarabel, show_output=:on, return_full_model=false)
+    search_lyapunov(prob::InclusionProblem, algo::Algorithm, K::Int, Q_0::Matrix, Q_K::Matrix, q_0::Union{Vector, Nothing}=nothing, q_K::Union{Vector, Nothing}=nothing; solver=:clarabel, show_output=:on, maxrank=nothing, return_full_model=false)
 
 Verify a chain of iteration-dependent Lyapunov inequalities via an SDP.
 
@@ -242,8 +257,9 @@ Q_0: A symmetric matrix of dimension $[n + \bar{m} + m] \times [n + \bar{m} + m]
 Q_K: A symmetric matrix of dimension $[n + \bar{m} + m] \times [n + \bar{m} + m]$, Matrix
 q_0: A vector for functional components (if any), with appropriate dimensions, Union{Vector, Nothing} (optional, default=nothing)
 q_K: A vector for functional components (if any), with appropriate dimensions, Union{Vector, Nothing} (optional, default=nothing)
-solver: Solver to use (:mosek,  :clarabel, :copt, :scs, :cosmo), Symbol (keyword, default=:clarabel)
+solver: Solver to use (:mosek,  :clarabel, :copt, :scs, :cosmo, :sdpa, :proxsdp, :hypatia, :sdplr), Symbol (keyword, default=:clarabel)
 show_output: Whether to show solver output (:on or :off), Symbol (keyword, default=:on)
+maxrank: SDPLR-only rank specification. Use a positive integer for a uniform cap or a function `(m, n) -> r` for block-dependent caps. If `nothing`, SDPLR defaults are used, Any (keyword, default=nothing)
 return_full_model: If true, appends Julia-specific debug payload with status, objective, decision-variable values, and model. If false, returns Python-style dictionary output, Bool (keyword, default=false)
 
 Output to the function
@@ -259,8 +275,9 @@ function search_lyapunov(
     K::Int,
     Q_0::Matrix, Q_K::Matrix,
     q_0::Union{Vector,Nothing}=nothing, q_K::Union{Vector,Nothing}=nothing;
-    solver=:mosek, # options are :mosek, :clarabel, :cosmo, :scs, :copt may add more later
+    solver=:mosek, # options are :mosek, :clarabel, :cosmo, :scs, :copt, :sdpa, :proxsdp, :hypatia, :sdplr may add more later
     show_output=true, # options are true, false
+    maxrank=nothing, # SDPLR-only option; accepts positive integer or function `(m, n) -> r`
     return_full_model=false
 )
     # --- 1. Validation ---
@@ -297,12 +314,26 @@ function search_lyapunov(
             set_attribute(model, "FeasTol", 1e-8)
             set_attribute(model, "SDPMethod", 0) # will use the primal-dual interior-point method
         end
+    elseif solver == :sdpa
+        model = Model(SDPA.Optimizer)
+    elseif solver == :proxsdp
+        model = Model(ProxSDP.Optimizer)
+    elseif solver == :hypatia
+        model = Model(Hypatia.Optimizer)
+    elseif solver == :sdplr
+        model = Model(SDPLR.Optimizer)
     else
-        throw(ArgumentError("Unsupported solver: $solver. Supported solvers are :mosek, :clarabel, :copt, :scs, and :cosmo."))
+        throw(ArgumentError("Unsupported solver: $solver. Supported solvers are :mosek, :clarabel, :copt, :scs, :cosmo, :sdpa, :proxsdp, :hypatia, and :sdplr."))
     end
     
     if show_output == false
         set_silent(model)
+    end
+
+    normalized_maxrank = _normalize_sdplr_maxrank(maxrank)
+    if normalized_maxrank !== nothing
+        solver == :sdplr || throw(ArgumentError("`maxrank` is only supported when `solver == :sdplr`; received solver=$solver."))
+        set_attribute(model, "maxrank", normalized_maxrank)
     end
 
     # --- 4. JuMP Variables ---

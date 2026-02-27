@@ -6,32 +6,244 @@ end
 
 @info "[💻 ] Running tests for AutoLyap.jl"
 
-solver_val = :clarabel # options are :mosek, :clarabel, :cosmo, :scs, :copt
+solver_val = :clarabel # options are :mosek, :clarabel, :hypatia, :cosmo, :scs, :copt, :sdpa, :proxsdp, :sdplr
 
 show_output_val = false # options are true or false
 
-if solver_val == :mosek || solver_val == :clarabel
+if solver_val == :mosek || solver_val == :clarabel || solver_val == :hypatia
     if solver_val == :mosek
         @info "[🏀 ] Using Mosek solver for SDP, using 1e-5 for tolerance in ≈"
     elseif solver_val == :clarabel
         @info "[🏀 ] Using Clarabel solver for SDP, using 1e-5 for tolerance in ≈"
+    elseif solver_val == :hypatia
+        @info "[🏀 ] Using Hypatia solver for SDP, using 1e-5 for tolerance in ≈"
     end
     atol_input = 1e-5
-elseif solver_val == :copt || solver_val == :scs || solver_val == :cosmo
+elseif solver_val == :copt || solver_val == :scs || solver_val == :cosmo || solver_val == :sdpa || solver_val == :proxsdp || solver_val == :sdplr
     if solver_val == :copt
         @info "[🎮 ] Using COPT solver for SDP, using 1e-3 for tolerance in ≈"
     elseif solver_val == :scs
         @info "[🎮 ] Using SCS solver for SDP, using 1e-3 for tolerance in ≈"
     elseif solver_val == :cosmo
         @info "[🎮 ] Using COSMO solver for SDP, using 1e-3 for tolerance in ≈"
+    elseif solver_val == :sdpa
+        @info "[🎮 ] Using SDPA solver for SDP, using 1e-3 for tolerance in ≈"
+    elseif solver_val == :proxsdp
+        @info "[🎮 ] Using ProxSDP solver for SDP, using 1e-3 for tolerance in ≈"
+    elseif solver_val == :sdplr
+        @info "[🎮 ] Using SDPLR solver for SDP, using 1e-3 for tolerance in ≈"
     end
     atol_input = 1e-3
 else
-    error("Unsupported solver: $solver_val. Supported solvers are :mosek, :clarabel, :copt, :scs, and :cosmo.")
+    error("Unsupported solver: $solver_val. Supported solvers are :mosek, :clarabel, :hypatia, :copt, :scs, :cosmo, :sdpa, :proxsdp, and :sdplr.")
 end
     
 
 # ## TEST CASE 1: MaximallyMonotone + (StronglyMonotone + Lipschitz)
+
+@testset "SDPA solver smoke test (iteration-independent)" begin
+    g1_conditions = MaximallyMonotone()
+    g2_conditions = [
+        StronglyMonotone(mu = 1.0),
+        LipschitzOperator(L = 2.0)
+    ]
+    components_list = [g1_conditions, g2_conditions]
+    problem = InclusionProblem(components = components_list)
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+    result = AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:sdpa,
+        show_output=false
+    )
+
+    @test result isa Dict
+    @test result["status"] in ("feasible", "infeasible")
+    if result["status"] == "feasible"
+        @test isfinite(result["rho"])
+    end
+end
+
+@testset "ProxSDP solver smoke test (iteration-independent)" begin
+    g1_conditions = MaximallyMonotone()
+    g2_conditions = [
+        StronglyMonotone(mu = 1.0),
+        LipschitzOperator(L = 2.0)
+    ]
+    components_list = [g1_conditions, g2_conditions]
+    problem = InclusionProblem(components = components_list)
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+    result = AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:proxsdp,
+        show_output=false
+    )
+
+    @test result isa Dict
+    @test result["status"] in ("feasible", "infeasible", "not_solved")
+    @test result["solve_status"] != "solver_error"
+    if result["status"] == "feasible"
+        @test isfinite(result["rho"])
+    end
+end
+
+@testset "Hypatia solver smoke test (iteration-independent)" begin
+    g1_conditions = MaximallyMonotone()
+    g2_conditions = [
+        StronglyMonotone(mu = 1.0),
+        LipschitzOperator(L = 2.0)
+    ]
+    components_list = [g1_conditions, g2_conditions]
+    problem = InclusionProblem(components = components_list)
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+    result = AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:hypatia,
+        show_output=false
+    )
+
+    @test result isa Dict
+    @test result["status"] in ("feasible", "infeasible", "not_solved")
+    @test result["solve_status"] != "solver_error"
+    if result["status"] == "feasible"
+        @test isfinite(result["rho"])
+    end
+end
+
+@testset "SDPLR solver smoke test (iteration-independent)" begin
+    g1_conditions = MaximallyMonotone()
+    g2_conditions = [
+        StronglyMonotone(mu = 1.0),
+        LipschitzOperator(L = 2.0)
+    ]
+    components_list = [g1_conditions, g2_conditions]
+    problem = InclusionProblem(components = components_list)
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+    result = AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:sdplr,
+        show_output=false
+    )
+
+    @test result isa Dict
+    @test result["status"] in ("feasible", "infeasible", "not_solved")
+    @test result["solve_status"] != "solver_error"
+    if result["status"] == "feasible"
+        @test isfinite(result["rho"])
+    end
+end
+
+@testset "SDPLR maxrank option tests" begin
+    g1_conditions = MaximallyMonotone()
+    g2_conditions = [
+        StronglyMonotone(mu = 1.0),
+        LipschitzOperator(L = 2.0)
+    ]
+    components_list = [g1_conditions, g2_conditions]
+    problem = InclusionProblem(components = components_list)
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+    result_int = AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:sdplr,
+        maxrank=2,
+        show_output=false
+    )
+    @test result_int isa Dict
+    @test result_int["status"] in ("feasible", "infeasible", "not_solved")
+    @test result_int["solve_status"] != "solver_error"
+    if result_int["status"] == "feasible"
+        @test isfinite(result_int["rho"])
+    end
+
+    rank_callback = (m, n) -> min(2, n)
+    result_fun = AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:sdplr,
+        maxrank=rank_callback,
+        show_output=false
+    )
+    @test result_fun isa Dict
+    @test result_fun["status"] in ("feasible", "infeasible", "not_solved")
+    @test result_fun["solve_status"] != "solver_error"
+    if result_fun["status"] == "feasible"
+        @test isfinite(result_fun["rho"])
+    end
+
+    bisection_result = AutoLyap.IterationIndependent.bisection_search_rho(
+        problem,
+        algorithm,
+        P,
+        T;
+        lower_bound=0.0,
+        upper_bound=0.4,
+        tol=1e-3,
+        solver=:sdplr,
+        maxrank=2,
+        show_output=false
+    )
+    @test bisection_result isa Dict
+    @test bisection_result["status"] in ("feasible", "infeasible", "not_solved")
+    @test bisection_result["solve_status"] != "solver_error"
+    if bisection_result["status"] == "feasible"
+        @test !isnothing(bisection_result["rho"])
+        @test isfinite(bisection_result["rho"])
+    end
+
+    @test_throws ArgumentError AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:clarabel,
+        maxrank=2,
+        show_output=false
+    )
+
+    @test_throws ArgumentError AutoLyap.IterationIndependent.search_lyapunov(
+        problem,
+        algorithm,
+        P,
+        T;
+        rho=0.4,
+        solver=:sdplr,
+        maxrank=0,
+        show_output=false
+    )
+end
 
 @testset "DRS Linear Convergence (StronglyMonotone + Lipschitz)" begin
 

@@ -30,6 +30,20 @@ in the `Julia REPL`. For an example, please proceed to the next section.
 
 Below is a short example on using `AutoLyap.jl` for Douglas-Rachford splitting. 
 
+#### Supported solvers
+
+AutoLyap currently supports the following solver symbols:
+
+- MOSEK (`:mosek`, commercial)
+- Clarabel (`:clarabel`, open-source)
+- COSMO (`:cosmo`, open-source)
+- SCS (`:scs`, open-source)
+- COPT (`:copt`, commercial)
+- SDPA (`:sdpa`, open-source)
+- ProxSDP (`:proxsdp`, open-source)
+- Hypatia (`:hypatia`, open-source)
+- SDPLR (`:sdplr`, open-source)
+
 #### Example: Douglas-Rachford Method
 
 We show here how `AutoLyap.jl` can be used to find linear convergence rates for the Douglas–Rachford method using a few lines of Julia code. In particular, consider the inclusion problem
@@ -53,7 +67,10 @@ The code below, using $(\mu, L, \gamma, \lambda) = (1, 2, 1, 2)$, performs a bis
 using AutoLyap
 using AutoLyap: IterationIndependent 
 
-solver_val = :clarabel # options are :mosek (commercial), :clarabel (open-source), :cosmo (open-source), :scs (open-source), :copt (commercial); for the commercial packages you will need valid licenses
+solver_val = :clarabel # options are :mosek (commercial), :clarabel (open-source), :cosmo (open-source), :scs (open-source), :sdpa (open-source), :proxsdp (open-source), :hypatia (open-source), :sdplr (open-source), :copt (commercial); for the commercial packages you will need valid licenses
+# Optional SDPLR rank control examples:
+# maxrank_val = 2                    # uniform rank cap for all SDPLR PSD blocks
+# maxrank_val = (m, n) -> min(2, n)  # block-dependent rank cap callback
 
 show_output_val = false # options are true or false
 
@@ -106,6 +123,12 @@ rho = result["rho"]
 println("[ 🎎 ] Computed DRS convergence rate (rho) for (StronglyMonotone + Lipschitz): $rho") #$
 println("Bisection status: ", result["status"])
 ```
+
+When `solver = :sdplr`, AutoLyap accepts an optional keyword `maxrank`:
+
+- `maxrank = 2` imposes a uniform rank cap of `2` across SDPLR PSD blocks.
+- `maxrank = (m, n) -> min(2, n)` uses SDPLR's block callback form (constraint count `m`, block size `n`).
+- If `maxrank` is omitted (`nothing`), SDPLR runs with its default rank policy.
 
 For other examples, please see the examples in the `test/runtests.jl` folder.
 

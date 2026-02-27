@@ -2,7 +2,7 @@
 
 module IterationIndependent
 
-using JuMP, Mosek, MosekTools, Clarabel, COSMO, SCS, LinearAlgebra, Combinatorics, Suppressor
+using JuMP, Mosek, MosekTools, Clarabel, COSMO, SCS, SDPA, ProxSDP, Hypatia, SDPLR, LinearAlgebra, Combinatorics, Suppressor
 
 @suppress begin
     using COPT
@@ -140,10 +140,10 @@ function _compute_thetas(alg::Algorithm, h::Int, alpha::Int, condition::String)
 end
 
 function _assert_full_model_status(function_name::String, status)
-    if status in (OPTIMAL, ALMOST_OPTIMAL)
+    if status in (OPTIMAL, ALMOST_OPTIMAL, LOCALLY_SOLVED, ALMOST_LOCALLY_SOLVED)
         return nothing
     end
-    throw(ErrorException("`$function_name` with `return_full_model=true` requires termination status OPTIMAL or ALMOST_OPTIMAL, got $(status)."))
+    throw(ErrorException("`$function_name` with `return_full_model=true` requires termination status OPTIMAL, ALMOST_OPTIMAL, LOCALLY_SOLVED, or ALMOST_LOCALLY_SOLVED, got $(status)."))
 end
 
 function _to_float_matrix(data)
@@ -178,12 +178,27 @@ const _SEARCH_STATUS_INFEASIBLE = "infeasible"
 const _SEARCH_STATUS_NOT_SOLVED = "not_solved"
 
 function _classify_search_status(status)
-    if status in (OPTIMAL, ALMOST_OPTIMAL)
+    if status in (OPTIMAL, ALMOST_OPTIMAL, LOCALLY_SOLVED, ALMOST_LOCALLY_SOLVED)
         return _SEARCH_STATUS_FEASIBLE
     elseif status in (INFEASIBLE, INFEASIBLE_OR_UNBOUNDED)
         return _SEARCH_STATUS_INFEASIBLE
     end
     return _SEARCH_STATUS_NOT_SOLVED
+end
+
+function _normalize_sdplr_maxrank(maxrank)
+    if maxrank === nothing
+        return nothing
+    elseif maxrank isa Bool
+        throw(ArgumentError("`maxrank` must be a positive integer or a function `(m, n) -> r`; received Bool."))
+    elseif maxrank isa Integer
+        rank_val = Int(maxrank)
+        rank_val > 0 || throw(ArgumentError("`maxrank` must be a positive integer when provided as a scalar."))
+        return (m, n) -> rank_val
+    elseif maxrank isa Function
+        return maxrank
+    end
+    throw(ArgumentError("`maxrank` must be either `nothing`, a positive integer, or a function `(m, n) -> r`."))
 end
 
 function _serialize_pair(pair::Tuple)
@@ -237,7 +252,7 @@ function _serialize_iteration_independent_certificate(
 end
 
 #=  
-    search_lyapunov(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; rho::Float64=1.0, h::Int=0, alpha::Int=0, Q_equals_P=false, S_equals_T=false, q_equals_p=false, s_equals_t=false, remove_C2=false, remove_C3=false, remove_C4=true, solver=:clarabel, show_output=false, return_full_model=false)
+    search_lyapunov(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; rho::Float64=1.0, h::Int=0, alpha::Int=0, Q_equals_P=false, S_equals_T=false, q_equals_p=false, s_equals_t=false, remove_C2=false, remove_C3=false, remove_C4=true, solver=:clarabel, show_output=false, maxrank=nothing, return_full_model=false)
 
 Verify an iteration-independent Lyapunov inequality via an SDP.
 
@@ -261,8 +276,9 @@ s_equals_t: For functional components, if true, sets s equal to t, Bool (keyword
 remove_C2: Flag to remove constraint C2, Bool (keyword, default=false)
 remove_C3: Flag to remove constraint C3, Bool (keyword, default=false)
 remove_C4: Flag to remove constraint C4, Bool (keyword, default=true)
-solver: Solver to use (:mosek or :clarabel), Symbol (keyword, default=:clarabel)
+solver: Solver to use (:mosek, :clarabel, :copt, :scs, :cosmo, :sdpa, :proxsdp, :hypatia, :sdplr), Symbol (keyword, default=:clarabel)
 show_output: Whether to show solver output (:on or :off), Symbol (keyword, default=:on)
+maxrank: SDPLR-only rank specification. Use a positive integer for a uniform cap or a function `(m, n) -> r` for block-dependent caps. If `nothing`, SDPLR defaults are used, Any (keyword, default=nothing)
 return_full_model: If true, returns a full solution snapshot with status, decision-variable values, and model. If false, returns the legacy boolean output, Bool (keyword, default=false)
 
 Output to the function
@@ -281,8 +297,9 @@ function search_lyapunov(
     Q_equals_P=false, S_equals_T=false,
     q_equals_p=false, s_equals_t=false,
     remove_C2=false, remove_C3=false, remove_C4=true,
-    solver=:mosek, # options are :mosek, :clarabel, :cosmo, :scs, :copt may add more later
+    solver=:mosek, # options are :mosek, :clarabel, :cosmo, :scs, :copt, :sdpa, :proxsdp, :hypatia, :sdplr may add more later
     show_output=false, # options are true and false
+    maxrank=nothing, # SDPLR-only option; accepts positive integer or function `(m, n) -> r`
     return_full_model=false
 )
     # --- 1. Validation ---
@@ -316,12 +333,26 @@ function search_lyapunov(
             set_attribute(model, "FeasTol", 1e-8)
             set_attribute(model, "SDPMethod", 0) # will use the primal-dual interior-point method
         end
+    elseif solver == :sdpa
+        model = Model(SDPA.Optimizer)
+    elseif solver == :proxsdp
+        model = Model(ProxSDP.Optimizer)
+    elseif solver == :hypatia
+        model = Model(Hypatia.Optimizer)
+    elseif solver == :sdplr
+        model = Model(SDPLR.Optimizer)
     else
-        throw(ArgumentError("Unsupported solver: $solver. Supported solvers are :mosek, :clarabel, :copt, :scs, and :cosmo."))
+        throw(ArgumentError("Unsupported solver: $solver. Supported solvers are :mosek, :clarabel, :copt, :scs, :cosmo, :sdpa, :proxsdp, :hypatia, and :sdplr."))
     end
 
     if show_output == false
         set_silent(model)
+    end
+
+    normalized_maxrank = _normalize_sdplr_maxrank(maxrank)
+    if normalized_maxrank !== nothing
+        solver == :sdplr || throw(ArgumentError("`maxrank` is only supported when `solver == :sdplr`; received solver=$solver."))
+        set_attribute(model, "maxrank", normalized_maxrank)
     end
 
 
@@ -545,7 +576,7 @@ function verify_iteration_independent_Lyapunov(args...; kwargs...)
 end
 
 #=  
-    bisection_search_rho(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; lower_bound::Float64=0.0, upper_bound::Float64=1.0, tol::Float64=1e-12, h::Int=0, alpha::Int=0, Q_equals_P::Bool=false, S_equals_T::Bool=false, q_equals_p::Bool=false, s_equals_t::Bool=false, remove_C2::Bool=false, remove_C3::Bool=false, remove_C4::Bool=true)
+    bisection_search_rho(prob::InclusionProblem, algo::Algorithm, P::Matrix, T::Matrix, p::Union{Vector, Nothing}=nothing, t::Union{Vector, Nothing}=nothing; lower_bound::Float64=0.0, upper_bound::Float64=1.0, tol::Float64=1e-12, h::Int=0, alpha::Int=0, Q_equals_P::Bool=false, S_equals_T::Bool=false, q_equals_p::Bool=false, s_equals_t::Bool=false, remove_C2::Bool=false, remove_C3::Bool=false, remove_C4::Bool=true, maxrank=nothing)
 
 Perform a bisection search to find the minimal contraction parameter $\rho$.
 
@@ -571,6 +602,7 @@ s_equals_t: For functional components, if true, set s equal to t, Bool (keyword,
 remove_C2: Flag to remove constraint C2, Bool (keyword, default=false)
 remove_C3: Flag to remove constraint C3, Bool (keyword, default=false)
 remove_C4: Flag to remove constraint C4, Bool (keyword, default=true)
+maxrank: SDPLR-only rank specification. Use a positive integer for a uniform cap or a function `(m, n) -> r`. Passed through to `search_lyapunov`, Any (keyword, default=nothing)
 
 Output to the function
 =================== 
@@ -587,13 +619,14 @@ function bisection_search_rho(
     h=0, alpha=0, Q_equals_P=false, S_equals_T=false,
     q_equals_p=false, s_equals_t=false,
     remove_C2=false, remove_C3=false, remove_C4=true,
-    solver = :clarabel, # options are :mosek, :clarabel, :cosmo, :scs, :copt may add more later
-    show_output=false # options are true and false
+    solver = :clarabel, # options are :mosek, :clarabel, :cosmo, :scs, :copt, :sdpa, :proxsdp, :hypatia, :sdplr may add more later
+    show_output=false, # options are true and false
+    maxrank=nothing # SDPLR-only option; accepts positive integer or function `(m, n) -> r`
 )
 
     # Define the pass-through arguments in a NamedTuple for clarity
     search_kwargs = (; h, alpha, Q_equals_P, S_equals_T, q_equals_p, s_equals_t,
-        remove_C2, remove_C3, remove_C4)
+        remove_C2, remove_C3, remove_C4, maxrank)
 
     # Check if a solution exists at the upper bound
     # We splat the search_kwargs into the call

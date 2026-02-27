@@ -1,30 +1,38 @@
 name = "AutoLyap"
 uuid = "0620cc6d-054a-4145-a0e3-d8b030648321"
-authors = ["Shuvomoy Das Gupta <shuvomoy.dasgupta@gmail.com>", "Adrien Taylor", "Manu Upadhyaya"]
 version = "1.0.0-DEV"
+authors = ["Shuvomoy Das Gupta <shuvomoy.dasgupta@gmail.com>", "Adrien Taylor", "Manu Upadhyaya"]
 
 [deps]
 COPT = "227a2e2d-e949-4d8e-a1da-7384fe6f0b9f"
 COSMO = "1e616198-aa4e-51ec-90a2-23f7fbd31d8d"
 Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
 Combinatorics = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+Hypatia = "b99e6be6-89ff-11e8-14f8-45c827f4f8f2"
 JuMP = "4076af6c-e467-56ae-b986-b466b2749572"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 Mosek = "6405355b-0ac2-5fba-af84-adbd65488c0e"
 MosekTools = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
+ProxSDP = "65e78d25-6039-50a4-9445-38022e3d2eb3"
 SCS = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
+SDPA = "b9a10b5b-afa4-512f-a053-bb3d8080febc"
+SDPLR = "56161740-ea4e-4253-9d15-43c62ff94d95"
 Suppressor = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
 
 [compat]
 COPT = "^1.1.27"
 COSMO = "^0.8.9"
 Clarabel = "^0.11.0"
-Combinatorics = "^1.0.3"
+Combinatorics = "^1.0.0"
+Hypatia = "0.8.2"
 JuMP = "^1.27.0"
 LinearAlgebra = "^1.11.0"
 Mosek = "^11.0.1"
 MosekTools = "^0.15.9"
+ProxSDP = "1.8.3"
 SCS = "^2.1.0"
+SDPA = "0.6.1"
+SDPLR = "0.1.2"
 Suppressor = "^0.2.8"
 julia = "^1.11.0"
 
