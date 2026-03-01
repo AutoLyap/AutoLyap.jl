@@ -1,6 +1,6 @@
 name = "AutoLyap"
 uuid = "0620cc6d-054a-4145-a0e3-d8b030648321"
-version = "1.0.0-DEV"
+version = "0.1.0"
 authors = ["Shuvomoy Das Gupta <shuvomoy.dasgupta@gmail.com>", "Adrien Taylor", "Manu Upadhyaya"]
 
 [deps]
