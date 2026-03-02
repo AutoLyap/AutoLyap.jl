@@ -15,7 +15,7 @@ The `runtestsl.jl` contains Julia test code for all analogous Python test code m
 In the `Julia REPL` , type
 
 ```julia
-] add AutoLyap
+] add https://github.com/AutoLyap/AutoLyap.jl
 ```
 
 That's it! Now you are ready to use `AutoLyap.jl` by just typing 
