@@ -1,10 +1,6 @@
 # `AutoLyap.jl`
 
-`AutoLyap.jl` is a native Julia implementation of the *AutoLyap* methodology and the associated Python package  [AutoLyap](https://github.com/AutoLyap/AutoLyap), which were developed in the papers:
-
->1. AutoLyap: A Python package for computer-assisted Lyapunov analyses for first-order methods by [Manu Upadhyaya](https://manuupadhyaya.github.io/), [Adrien B. Taylor](https://adrientaylor.github.io/), [Sebastian Banert](https://github.com/sbanert), and [Pontus Giselsson](https://www.control.lth.se/personnel/personnel/pontus-giselsson/), 2025. [[arXiv Link](https://arxiv.org/pdf/2506.24076)]
->2. Manu Upadhyaya, Sebastian Banert, Adrien B. Taylor, and Pontus  Giselsson. "Automated tight Lyapunov analysis for first-order methods." *Mathematical Programming* 209, no. 1 (2025): 133-170. [[arXiv Link](https://arxiv.org/pdf/2302.06713)]
->
+`AutoLyap.jl` is a native Julia implementation of the *AutoLyap* methodology and the associated Python package  [AutoLyap](https://github.com/AutoLyap/AutoLyap). 
 
 The package is functionally equivalent to the Python package [AutoLyap](https://github.com/AutoLyap/AutoLyap), however the certain design patterns are different in the Julia package, e.g., the Julia package uses the notion of `struct+method` along with `multiple dispatch` in Julia over the notion of `class` in Python. 
 
@@ -131,6 +127,23 @@ When `solver = :sdplr`, AutoLyap accepts an optional keyword `maxrank`:
 - If `maxrank` is omitted (`nothing`), SDPLR runs with its default rank policy.
 
 For other examples, please see the examples in the `test/runtests.jl` folder.
+
+## Citing this package
+
+If `AutoLyap` contributes to your research or software, please cite:
+
+```latex
+@misc{upadhyaya2026autolyap,
+author = {Upadhyaya, Manu and Das Gupta, Shuvomoy and Taylor, Adrien B. and Banert, Sebastian and Giselsson, Pontus},
+title = {The {AutoLyap} software suite for computer-assisted {L}yapunov analyses of first-order methods},
+year = {2026},
+archivePrefix = {arXiv},
+eprint = {2506.24076},
+primaryClass = {math.OC},
+}
+```
+
+[UDGT+26] *Manu Upadhyaya, Shuvomoy Das Gupta, Adrien B. Taylor, Sebastian Banert, and Pontus Giselsson. The AutoLyap software suite for computer-assisted Lyapunov analyses of first-order methods. 2026. arXiv:2506.24076.*
 
 ## Reporting issues
 Please report any issues via the [Github issue tracker](https://github.com/AutoLyap/AutoLyap.jl/issues). All types of issues are welcome including bug reports, feature requests, implementation for a specific research problem and so on.
