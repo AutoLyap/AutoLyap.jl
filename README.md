@@ -40,9 +40,9 @@ in the `Julia REPL`.
 
 A completely open-source reproducible `Pluto` notebook to try out a simple `AutoLyap.jl` example is available at:
 
-[https://pluto.land/n/tuq8kur3](https://pluto.land/n/tuq8kur3)
+[https://pluto.land/n/yxtggp9k](https://pluto.land/n/yxtggp9k)
 
-From this link, you can either download the `Pluto` notebook file and run it locally with `Pluto`, or run the notebook with [`Binder`](https://plutojl.org/en/docs/binder/) directly in your browser!
+From this link, you can download the `Pluto` notebook file and run it locally with `Pluto`.
 
 You can also take a look at the same example below. 
 
