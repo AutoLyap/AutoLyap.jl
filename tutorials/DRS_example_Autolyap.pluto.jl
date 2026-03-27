@@ -1,16 +1,8 @@
 ### A Pluto.jl notebook ###
-# v0.20.23
+# v0.20.24
 
 using Markdown
 using InteractiveUtils
-
-# ╔═╡ 2ec2d60a-1523-11f1-a90f-3723ba1c0c9f
-begin
-    import Pkg
-    # careful: this is _not_ a reproducible environment
-    # activate the global environment
-    Pkg.activate()
-end
 
 # ╔═╡ 6db801d2-a48c-4a15-9ee0-4eb1c1305c79
 begin
@@ -37,56 +29,100 @@ $$x^{k+1} = x^k + \lambda(y_2^k - y_1^k),$$
 where $k=0,1,2,\ldots$, $J_{\gamma G_i}$ is the resolvent for $G_i$ with step-size $\gamma \in \mathbb{R}_{++}$, $\lambda \in \mathbb{R}$ is a relaxation parameter, and $x^0 \in \mathcal{H}$ is our initial point.
 """
 
+# ╔═╡ 67c3b4b7-1f99-48b4-8ac8-0a58c17fe904
+md"""
+The code below, using $(\mu, L, \gamma, \lambda) = (1, 2, 1, 2)$, performs a bisection search to find the smallest $\rho \in [0,1]$ such that $||y_1^k - y^\star||^2 \in O(\rho^k)$ as $k$ goes to $\infty$, where $y^\star \in \text{zero}(G_1 + G_2)$.
+"""
+
 # ╔═╡ bebf905b-e1b1-4767-96b5-f821456f35b0
 md"""
+## Load the packages
 Let us start with loading our packages. 
 """
 
-# ╔═╡ 67c3b4b7-1f99-48b4-8ac8-0a58c17fe904
+# ╔═╡ 316449b5-2772-4df5-825b-284ada495620
 md"""
-The code below, using $(\mu, L, \gamma, \lambda) = (1, 2, 1, 2)$, performs a bisection search to find the smallest $\rho \in [0,1]$ such that $||y_1^k - y^\star||^2 \in O(\rho^k)$ as $k$ goes to $\infty$, where $y^\star \in \text{zero}(G_1 + G_2)$; this is  provable via the Lyapunov analysis in [1].
+## Define the problem
+We now define the problem step by step.
 """
 
 # ╔═╡ 9e93a876-db65-403d-8cf8-dbfb904d0139
 md"""
+#### Define the operators
 Let us start with defining our operators $G_1$ and $G_2$. 
+
+First, we define $G_1$ to be a maximally monotone operator.
 """
 
 # ╔═╡ 86cf8378-c90c-4194-81c1-dba25317c8f3
-g1_conditions = MaximallyMonotone()
+G₁_conditions = MaximallyMonotone() 
+
+# ╔═╡ 07ab806a-0e3b-4798-87b7-466984bd05eb
+md"""
+Let us now define $G_2$ as strongly monotone Lipschitz operator with strong monotonicity parameter $\mu = 1$ and Lipschitz parameter $L=2$.
+"""
+
+# ╔═╡ 352a0f0e-a7fb-4086-93fb-9292a04477e8
+μ = 1
+
+# ╔═╡ 1c9a420f-5f8b-4ab8-af93-a8ab8ab761ce
+L = 2
 
 # ╔═╡ 63ad8746-1e48-45fb-add4-392874ce51d0
-g2_conditions = [
-    StronglyMonotone(mu = 1.0),
-    LipschitzOperator(L = 2.0)
+G₂_conditions = [
+    StronglyMonotone(mu = μ),
+    LipschitzOperator(L = L)
 ]
 
-# ╔═╡ 4c0ed8a5-ad56-4227-b9b9-b0a40375516f
-components_list = [g1_conditions, g2_conditions]
+# ╔═╡ b971e880-b6a6-4ae2-8338-19311f492843
+md"""
+#### Define the monotone inclusion
+"""
 
 # ╔═╡ d1c5b609-0c33-4838-99a3-cba1a78d2060
 md"""
-Let us define the problem type now, which is essentially an monotone inclusion problem. 
+Let us define the problem type now, which is essentially an monotone inclusion problem with conditions on $G_1$ and $G_2$. 
 """
 
 # ╔═╡ 3921a1bf-1d0f-4dbb-a1a9-e39c57b4a2d0
-problem = InclusionProblem(components = components_list)
+problem = InclusionProblem(components = [G₁_conditions, G₂_conditions])
+
+# ╔═╡ bdf29f75-c5e3-420e-9a61-babf8ac6825b
+md"""
+#### Define the algorithm
+"""
 
 # ╔═╡ 480ff309-5b22-4827-a9ab-4cd6f564e24e
 md"""
-The next step is defining the optimization algorithm in consideration itserlf, which is Douglas-Rachford Splitting. 
+The next step is defining the optimization algorithm in consideration itserlf, which is Douglas-Rachford Splitting with $\gamma = 1$ and $\lambda = 2$. 
 """
 
+# ╔═╡ a3c3eb83-a523-4c9f-9a65-8b9a6b021b47
+γ = 1
+
+# ╔═╡ 15388eb8-5fb3-42dd-ac9e-8b57bd0c88d5
+λ = 2
+
 # ╔═╡ a62dfd63-5875-453c-9d73-57ccc54aee6a
-algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version=true)
+algorithm = DouglasRachford(gamma = γ, lambda_value = λ, operator_version=true)
+
+# ╔═╡ 0d5ad6d1-14fd-4787-99ca-7103329ca99f
+md"""
+#### Define the performance metric
+"""
 
 # ╔═╡ 18920310-9a5f-46fb-8c4b-1f5992479d1f
 md"""
-We now define the performance metric, which correspoinds to distance from the optimal solution.
+We now define the performance metric, which correspoinds to distance from the optimal solution $||y_1^k - y^\star||^2$.
 """
 
 # ╔═╡ 57d2b602-ddd3-495a-908d-ab6efbc8f33d
 (P, T) = IterationIndependent.get_parameters_distance_to_solution(algorithm)
+
+# ╔═╡ 03f0ea20-0fcd-44af-adc7-be2c19583e3c
+md"""
+#### Find the best convergence rate of Douglas-Rachford Splitting
+"""
 
 # ╔═╡ d2f0025d-ce27-4595-9306-60fb69a7c3af
 md"""
@@ -112,33 +148,745 @@ Time to get the best convergence rate!
 """
 
 # ╔═╡ 74ad4737-1937-402b-99e5-7679a8e74ad8
-rho = result["rho"]
+ρ = result["rho"]
 
 # ╔═╡ 2abff818-c0a4-478a-be1f-d14772c7349d
-println("[ 🎎 ] Computed DRS convergence rate (rho) for (StronglyMonotone + Lipschitz): $rho") #$
+println("[ 🎎 ] Computed DRS convergence rate ρ for (StronglyMonotone + Lipschitz): $ρ") 
 
 # ╔═╡ 5f276a99-ce19-40ce-9a3c-90b49989d638
 println("Bisection status: ", result["status"])
 
+# ╔═╡ 00000000-0000-0000-0000-000000000001
+PLUTO_PROJECT_TOML_CONTENTS = """
+[deps]
+AutoLyap = "0620cc6d-054a-4145-a0e3-d8b030648321"
+Clarabel = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
+
+[compat]
+AutoLyap = "~0.1.0"
+Clarabel = "~0.11.0"
+"""
+
+# ╔═╡ 00000000-0000-0000-0000-000000000002
+PLUTO_MANIFEST_TOML_CONTENTS = """
+# This file is machine-generated - editing it directly is not advised
+
+julia_version = "1.12.5"
+manifest_format = "2.0"
+project_hash = "e89ee8c41c14e56d67fa616f9c37bc47b1ed11b9"
+
+[[deps.AMD]]
+deps = ["LinearAlgebra", "SparseArrays", "SuiteSparse_jll"]
+git-tree-sha1 = "45a1272e3f809d36431e57ab22703c6896b8908f"
+uuid = "14f7f29c-3bd6-536c-9a0b-7339e30b5a3e"
+version = "0.5.3"
+
+[[deps.ArgTools]]
+uuid = "0dad84c5-d112-42e6-8d28-ef12dabb789f"
+version = "1.1.2"
+
+[[deps.Arpack]]
+deps = ["Arpack_jll", "Libdl", "LinearAlgebra", "Logging"]
+git-tree-sha1 = "9b9b347613394885fd1c8c7729bfc60528faa436"
+uuid = "7d9fca2a-8960-54d3-9f78-7d1dccf2cb97"
+version = "0.5.4"
+
+[[deps.Arpack_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "libblastrampoline_jll"]
+git-tree-sha1 = "7f54761502ff149a9d492e4acefe9805898e29b3"
+uuid = "68821587-b530-5797-8361-c406ea357684"
+version = "3.5.2+0"
+
+[[deps.Artifacts]]
+uuid = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
+version = "1.11.0"
+
+[[deps.AutoLyap]]
+deps = ["COPT", "COSMO", "Clarabel", "Combinatorics", "Hypatia", "JuMP", "LinearAlgebra", "Mosek", "MosekTools", "ProxSDP", "SCS", "SDPA", "SDPLR", "Suppressor"]
+git-tree-sha1 = "75955c1e3f72f0587807c12509af6fbb01d637bf"
+uuid = "0620cc6d-054a-4145-a0e3-d8b030648321"
+version = "0.1.0"
+
+[[deps.Base64]]
+uuid = "2a0f44e3-6c83-55bd-87e4-b1978d98bd5f"
+version = "1.11.0"
+
+[[deps.BenchmarkTools]]
+deps = ["Compat", "JSON", "Logging", "Printf", "Profile", "Statistics", "UUIDs"]
+git-tree-sha1 = "7fecfb1123b8d0232218e2da0c213004ff15358d"
+uuid = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"
+version = "1.6.3"
+
+[[deps.Bzip2_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "1b96ea4a01afe0ea4090c5c8039690672dd13f2e"
+uuid = "6e34b625-4abd-537c-b88f-471c36dfa7a0"
+version = "1.0.9+0"
+
+[[deps.COPT]]
+deps = ["LazyArtifacts", "Libdl", "LinearAlgebra", "MathOptInterface", "Pkg", "Random", "SparseArrays"]
+git-tree-sha1 = "3f89233e348d373f2ab0731a9f3f5f17ff2cd27c"
+uuid = "227a2e2d-e949-4d8e-a1da-7384fe6f0b9f"
+version = "1.1.33"
+
+[[deps.COSMO]]
+deps = ["AMD", "COSMOAccelerators", "DataStructures", "IterTools", "LinearAlgebra", "MathOptInterface", "Pkg", "Printf", "QDLDL", "Random", "Reexport", "Requires", "SparseArrays", "Statistics", "SuiteSparse", "Test", "UnsafeArrays"]
+git-tree-sha1 = "9ee9809bde10b6875ca58aadcb22af8e36bd83f9"
+uuid = "1e616198-aa4e-51ec-90a2-23f7fbd31d8d"
+version = "0.8.9"
+
+[[deps.COSMOAccelerators]]
+deps = ["LinearAlgebra", "Random", "SparseArrays", "Test"]
+git-tree-sha1 = "b1153b40dd95f856e379f25ae335755ecc24298e"
+uuid = "bbd8fffe-5ad0-4d78-a55e-85575421b4ac"
+version = "0.1.0"
+
+[[deps.Clarabel]]
+deps = ["AMD", "DataStructures", "GenericLinearAlgebra", "JSON", "LinearAlgebra", "MathOptInterface", "Printf", "QDLDL", "SnoopPrecompile", "SparseArrays", "StaticArrays", "SuiteSparse", "TOML", "TimerOutputs"]
+git-tree-sha1 = "c34c18b597a88df4243dc54e97e1b4830145a606"
+uuid = "61c947e1-3e6d-4ee4-985a-eec8c727bd6e"
+version = "0.11.0"
+
+    [deps.Clarabel.extensions]
+    HSLExt = "HSL"
+    PardisoExt = "Pardiso"
+
+    [deps.Clarabel.weakdeps]
+    HSL = "34c5aeac-e683-54a6-a0e9-6e0fdc586c50"
+    Pardiso = "46dd5b70-b6fb-5a00-ae2d-e8fea33afaf2"
+
+[[deps.CodecBzip2]]
+deps = ["Bzip2_jll", "TranscodingStreams"]
+git-tree-sha1 = "84990fa864b7f2b4901901ca12736e45ee79068c"
+uuid = "523fee87-0ab8-5b00-afb7-3ecf72e48cfd"
+version = "0.8.5"
+
+[[deps.CodecZlib]]
+deps = ["TranscodingStreams", "Zlib_jll"]
+git-tree-sha1 = "962834c22b66e32aa10f7611c08c8ca4e20749a9"
+uuid = "944b1d66-785c-5afd-91f1-9de20f533193"
+version = "0.7.8"
+
+[[deps.Combinatorics]]
+git-tree-sha1 = "c761b00e7755700f9cdf5b02039939d1359330e1"
+uuid = "861a8166-3701-5b0c-9a16-15d98fcdc6aa"
+version = "1.1.0"
+
+[[deps.CommonSubexpressions]]
+deps = ["MacroTools"]
+git-tree-sha1 = "cda2cfaebb4be89c9084adaca7dd7333369715c5"
+uuid = "bbf7d656-a473-5ed7-a52c-81e309532950"
+version = "0.3.1"
+
+[[deps.Compat]]
+deps = ["TOML", "UUIDs"]
+git-tree-sha1 = "9d8a54ce4b17aa5bdce0ea5c34bc5e7c340d16ad"
+uuid = "34da2185-b29b-5c13-b0c7-acf172513d20"
+version = "4.18.1"
+weakdeps = ["Dates", "LinearAlgebra"]
+
+    [deps.Compat.extensions]
+    CompatLinearAlgebraExt = "LinearAlgebra"
+
+[[deps.CompilerSupportLibraries_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "e66e0078-7015-5450-92f7-15fbd957f2ae"
+version = "1.3.0+1"
+
+[[deps.CxxWrap]]
+deps = ["Libdl", "MacroTools", "libcxxwrap_julia_jll"]
+git-tree-sha1 = "f7a997d3959648a818c45dda059a45844300b94d"
+uuid = "1f15a43c-97ca-5a2a-ae31-89f07a497df4"
+version = "0.17.5"
+
+[[deps.DataStructures]]
+deps = ["Compat", "InteractiveUtils", "OrderedCollections"]
+git-tree-sha1 = "4e1fe97fdaed23e9dc21d4d664bea76b65fc50a0"
+uuid = "864edb3b-99cc-5e75-8d2d-829cb0a9cfe8"
+version = "0.18.22"
+
+[[deps.Dates]]
+deps = ["Printf"]
+uuid = "ade2ca70-3891-5945-98fb-dc099432e06a"
+version = "1.11.0"
+
+[[deps.DiffResults]]
+deps = ["StaticArraysCore"]
+git-tree-sha1 = "782dd5f4561f5d267313f23853baaaa4c52ea621"
+uuid = "163ba53b-c6d8-5494-b064-1a9d43ac40c5"
+version = "1.1.0"
+
+[[deps.DiffRules]]
+deps = ["IrrationalConstants", "LogExpFunctions", "NaNMath", "Random", "SpecialFunctions"]
+git-tree-sha1 = "23163d55f885173722d1e4cf0f6110cdbaf7e272"
+uuid = "b552c78f-8df3-52c6-915a-8e097449b14b"
+version = "1.15.1"
+
+[[deps.DocStringExtensions]]
+git-tree-sha1 = "7442a5dfe1ebb773c29cc2962a8980f47221d76c"
+uuid = "ffbed154-4ef7-542d-bbb7-c09d3a79fcae"
+version = "0.9.5"
+
+[[deps.Downloads]]
+deps = ["ArgTools", "FileWatching", "LibCURL", "NetworkOptions"]
+uuid = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
+version = "1.7.0"
+
+[[deps.ExprTools]]
+git-tree-sha1 = "27415f162e6028e81c72b82ef756bf321213b6ec"
+uuid = "e2ba6199-217a-4e67-a87a-7c52f15ade04"
+version = "0.1.10"
+
+[[deps.FileWatching]]
+uuid = "7b1f6079-737a-58dc-b8bc-7a2ca5c1b5ee"
+version = "1.11.0"
+
+[[deps.ForwardDiff]]
+deps = ["CommonSubexpressions", "DiffResults", "DiffRules", "LinearAlgebra", "LogExpFunctions", "NaNMath", "Preferences", "Printf", "Random", "SpecialFunctions"]
+git-tree-sha1 = "cddeab6487248a39dae1a960fff0ac17b2a28888"
+uuid = "f6369f11-7733-5829-9624-2563aa707210"
+version = "1.3.3"
+weakdeps = ["StaticArrays"]
+
+    [deps.ForwardDiff.extensions]
+    ForwardDiffStaticArraysExt = "StaticArrays"
+
+[[deps.GenericLinearAlgebra]]
+deps = ["LinearAlgebra", "Printf", "Random", "libblastrampoline_jll"]
+git-tree-sha1 = "fc6236b7fbc40bc283e0dc5a84ead1169a6d7dda"
+uuid = "14197337-ba66-59df-a3e3-ca00e7dcff7a"
+version = "0.3.19"
+
+[[deps.Hypatia]]
+deps = ["Combinatorics", "DocStringExtensions", "GenericLinearAlgebra", "IterativeSolvers", "LinearAlgebra", "LinearMaps", "MathOptInterface", "PolynomialRoots", "Printf", "Requires", "SparseArrays", "SpecialFunctions", "SuiteSparse", "Test"]
+git-tree-sha1 = "d58d10f9fafb7c2969cafcedc9f3c0f850f9f2bf"
+uuid = "b99e6be6-89ff-11e8-14f8-45c827f4f8f2"
+version = "0.8.2"
+
+[[deps.InteractiveUtils]]
+deps = ["Markdown"]
+uuid = "b77e0a4c-d291-57a0-90e8-8db25a27a240"
+version = "1.11.0"
+
+[[deps.IrrationalConstants]]
+git-tree-sha1 = "b2d91fe939cae05960e760110b328288867b5758"
+uuid = "92d709cd-6900-40b7-9082-c6be49f344b6"
+version = "0.2.6"
+
+[[deps.IterTools]]
+git-tree-sha1 = "42d5f897009e7ff2cf88db414a389e5ed1bdd023"
+uuid = "c8e1da08-722c-5040-9ed9-7db0dc04731e"
+version = "1.10.0"
+
+[[deps.IterativeSolvers]]
+deps = ["LinearAlgebra", "Printf", "Random", "RecipesBase", "SparseArrays"]
+git-tree-sha1 = "59545b0a2b27208b0650df0a46b8e3019f85055b"
+uuid = "42fd0dbc-a981-5370-80f2-aaf504508153"
+version = "0.9.4"
+
+[[deps.JLLWrappers]]
+deps = ["Artifacts", "Preferences"]
+git-tree-sha1 = "0533e564aae234aff59ab625543145446d8b6ec2"
+uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
+version = "1.7.1"
+
+[[deps.JSON]]
+deps = ["Dates", "Mmap", "Parsers", "Unicode"]
+git-tree-sha1 = "31e996f0a15c7b280ba9f76636b3ff9e2ae58c9a"
+uuid = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+version = "0.21.4"
+
+[[deps.JuMP]]
+deps = ["LinearAlgebra", "MacroTools", "MathOptInterface", "MutableArithmetics", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays"]
+git-tree-sha1 = "4091a1338a0e32766b11b9bd3fac247d34200c77"
+uuid = "4076af6c-e467-56ae-b986-b466b2749572"
+version = "1.30.0"
+
+    [deps.JuMP.extensions]
+    JuMPDimensionalDataExt = "DimensionalData"
+
+    [deps.JuMP.weakdeps]
+    DimensionalData = "0703355e-b756-11e9-17c0-8b28908087d0"
+
+[[deps.JuliaSyntaxHighlighting]]
+deps = ["StyledStrings"]
+uuid = "ac6e5ff7-fb65-4e79-a425-ec3bc9c03011"
+version = "1.12.0"
+
+[[deps.KrylovKit]]
+deps = ["LinearAlgebra", "Printf"]
+git-tree-sha1 = "49b0c1dd5c292870577b8f58c51072bd558febb9"
+uuid = "0b1a1467-8014-51b9-945f-bf0ae24f4b77"
+version = "0.5.4"
+
+[[deps.LLVMOpenMP_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "eb62a3deb62fc6d8822c0c4bef73e4412419c5d8"
+uuid = "1d63c593-3942-5779-bab2-d838dc0a180e"
+version = "18.1.8+0"
+
+[[deps.LazyArtifacts]]
+deps = ["Artifacts", "Pkg"]
+uuid = "4af54fe1-eca0-43a8-85a7-787d91b784e3"
+version = "1.11.0"
+
+[[deps.LibCURL]]
+deps = ["LibCURL_jll", "MozillaCACerts_jll"]
+uuid = "b27032c2-a3e7-50c8-80cd-2d36dbcbfd21"
+version = "0.6.4"
+
+[[deps.LibCURL_jll]]
+deps = ["Artifacts", "LibSSH2_jll", "Libdl", "OpenSSL_jll", "Zlib_jll", "nghttp2_jll"]
+uuid = "deac9b47-8bc7-5906-a0fe-35ac56dc84c0"
+version = "8.15.0+0"
+
+[[deps.LibGit2]]
+deps = ["LibGit2_jll", "NetworkOptions", "Printf", "SHA"]
+uuid = "76f85450-5226-5b5a-8eaa-529ad045b433"
+version = "1.11.0"
+
+[[deps.LibGit2_jll]]
+deps = ["Artifacts", "LibSSH2_jll", "Libdl", "OpenSSL_jll"]
+uuid = "e37daf67-58a4-590a-8e99-b0245dd2ffc5"
+version = "1.9.0+0"
+
+[[deps.LibSSH2_jll]]
+deps = ["Artifacts", "Libdl", "OpenSSL_jll"]
+uuid = "29816b5a-b9ab-546f-933c-edad1886dfa8"
+version = "1.11.3+1"
+
+[[deps.Libdl]]
+uuid = "8f399da3-3557-5675-b5ff-fb832c97cbdb"
+version = "1.11.0"
+
+[[deps.LinearAlgebra]]
+deps = ["Libdl", "OpenBLAS_jll", "libblastrampoline_jll"]
+uuid = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+version = "1.12.0"
+
+[[deps.LinearMaps]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "7f6be2e4cdaaf558623d93113d6ddade7b916209"
+uuid = "7a12625a-238d-50fd-b39a-03d52299707e"
+version = "3.11.4"
+
+    [deps.LinearMaps.extensions]
+    LinearMapsChainRulesCoreExt = "ChainRulesCore"
+    LinearMapsSparseArraysExt = "SparseArrays"
+    LinearMapsStatisticsExt = "Statistics"
+
+    [deps.LinearMaps.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    SparseArrays = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+    Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[[deps.LogExpFunctions]]
+deps = ["DocStringExtensions", "IrrationalConstants", "LinearAlgebra"]
+git-tree-sha1 = "13ca9e2586b89836fd20cccf56e57e2b9ae7f38f"
+uuid = "2ab3a3ac-af41-5b50-aa03-7779005ae688"
+version = "0.3.29"
+
+    [deps.LogExpFunctions.extensions]
+    LogExpFunctionsChainRulesCoreExt = "ChainRulesCore"
+    LogExpFunctionsChangesOfVariablesExt = "ChangesOfVariables"
+    LogExpFunctionsInverseFunctionsExt = "InverseFunctions"
+
+    [deps.LogExpFunctions.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    ChangesOfVariables = "9e997f8a-9a97-42d5-a9f1-ce6bfc15e2c0"
+    InverseFunctions = "3587e190-3f89-42d0-90ee-14403ec27112"
+
+[[deps.Logging]]
+uuid = "56ddb016-857b-54e1-b83d-db4d58db5568"
+version = "1.11.0"
+
+[[deps.MacroTools]]
+git-tree-sha1 = "1e0228a030642014fe5cfe68c2c0a818f9e3f522"
+uuid = "1914dd2f-81c6-5fcd-8719-6d5c9610ff09"
+version = "0.5.16"
+
+[[deps.Markdown]]
+deps = ["Base64", "JuliaSyntaxHighlighting", "StyledStrings"]
+uuid = "d6f4376e-aef5-505a-96c1-9c027394607a"
+version = "1.11.0"
+
+[[deps.MathOptInterface]]
+deps = ["BenchmarkTools", "CodecBzip2", "CodecZlib", "ForwardDiff", "JSON", "LinearAlgebra", "MutableArithmetics", "NaNMath", "OrderedCollections", "PrecompileTools", "Printf", "SparseArrays", "SpecialFunctions", "Test"]
+git-tree-sha1 = "ce739e3d8a21313ea418772edfc3b7b15a1dfc16"
+uuid = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+version = "1.50.1"
+
+[[deps.Mmap]]
+uuid = "a63ad114-7e13-5084-954f-fe012c677804"
+version = "1.11.0"
+
+[[deps.Mosek]]
+deps = ["Libdl", "Pkg", "Printf", "SparseArrays"]
+git-tree-sha1 = "ea661427c5951c3de663550b637165ecd38febb2"
+uuid = "6405355b-0ac2-5fba-af84-adbd65488c0e"
+version = "11.0.1"
+
+[[deps.MosekTools]]
+deps = ["MathOptInterface", "Mosek"]
+git-tree-sha1 = "5ea97a807fad13a0a2760dbf9a01809709eba099"
+uuid = "1ec41992-ff65-5c91-ac43-2df89e9693a4"
+version = "0.15.10"
+
+[[deps.MozillaCACerts_jll]]
+uuid = "14a3606d-f60d-562e-9121-12d972cd8159"
+version = "2025.11.4"
+
+[[deps.MutableArithmetics]]
+deps = ["LinearAlgebra", "SparseArrays", "Test"]
+git-tree-sha1 = "22df8573f8e7c593ac205455ca088989d0a2c7a0"
+uuid = "d8a4904e-b15c-11e9-3269-09a3773c0cb0"
+version = "1.6.7"
+
+[[deps.NaNMath]]
+deps = ["OpenLibm_jll"]
+git-tree-sha1 = "9b8215b1ee9e78a293f99797cd31375471b2bcae"
+uuid = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
+version = "1.1.3"
+
+[[deps.NetworkOptions]]
+uuid = "ca575930-c2e3-43a9-ace4-1e988b2c1908"
+version = "1.3.0"
+
+[[deps.OpenBLAS32_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "46cce8b42186882811da4ce1f4c7208b02deb716"
+uuid = "656ef2d0-ae68-5445-9ca0-591084a874a2"
+version = "0.3.30+0"
+
+[[deps.OpenBLAS_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
+uuid = "4536629a-c528-5b80-bd46-f80d51c5b363"
+version = "0.3.29+0"
+
+[[deps.OpenLibm_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "05823500-19ac-5b8b-9628-191a04bc5112"
+version = "0.8.7+0"
+
+[[deps.OpenSSL_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "458c3c95-2e84-50aa-8efc-19380b2a3a95"
+version = "3.5.4+0"
+
+[[deps.OpenSpecFun_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "1346c9208249809840c91b26703912dff463d335"
+uuid = "efe28fd5-8261-553b-a9e1-b2916fc3738e"
+version = "0.5.6+0"
+
+[[deps.OrderedCollections]]
+git-tree-sha1 = "05868e21324cede2207c6f0f466b4bfef6d5e7ee"
+uuid = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+version = "1.8.1"
+
+[[deps.Parsers]]
+deps = ["Dates", "PrecompileTools", "UUIDs"]
+git-tree-sha1 = "7d2f8f21da5db6a806faf7b9b292296da42b2810"
+uuid = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
+version = "2.8.3"
+
+[[deps.Pkg]]
+deps = ["Artifacts", "Dates", "Downloads", "FileWatching", "LibGit2", "Libdl", "Logging", "Markdown", "Printf", "Random", "SHA", "TOML", "Tar", "UUIDs", "p7zip_jll"]
+uuid = "44cfe95a-1eb2-52ea-b672-e2afdf69b78f"
+version = "1.12.1"
+
+    [deps.Pkg.extensions]
+    REPLExt = "REPL"
+
+    [deps.Pkg.weakdeps]
+    REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
+
+[[deps.PolynomialRoots]]
+git-tree-sha1 = "5f807b5345093487f733e520a1b7395ee9324825"
+uuid = "3a141323-8675-5d76-9d11-e1df1406c778"
+version = "1.0.0"
+
+[[deps.PrecompileTools]]
+deps = ["Preferences"]
+git-tree-sha1 = "07a921781cab75691315adc645096ed5e370cb77"
+uuid = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
+version = "1.3.3"
+
+[[deps.Preferences]]
+deps = ["TOML"]
+git-tree-sha1 = "8b770b60760d4451834fe79dd483e318eee709c4"
+uuid = "21216c6a-2e73-6563-6e65-726566657250"
+version = "1.5.2"
+
+[[deps.Printf]]
+deps = ["Unicode"]
+uuid = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+version = "1.11.0"
+
+[[deps.Profile]]
+deps = ["StyledStrings"]
+uuid = "9abbd945-dff8-562f-b5e8-e1ebf5ef1b79"
+version = "1.11.0"
+
+[[deps.ProxSDP]]
+deps = ["Arpack", "JuMP", "KrylovKit", "LinearAlgebra", "Logging", "MathOptInterface", "PrecompileTools", "Printf", "Random", "SparseArrays", "TimerOutputs"]
+git-tree-sha1 = "0ca8d20076eac7fef4ea8394082bd3ffdd3c4733"
+uuid = "65e78d25-6039-50a4-9445-38022e3d2eb3"
+version = "1.8.3"
+
+[[deps.QDLDL]]
+deps = ["AMD", "LinearAlgebra", "SparseArrays"]
+git-tree-sha1 = "5a3c14e534faf5b66c4633b5770a665ec1a87503"
+uuid = "bfc457fd-c171-5ab7-bd9e-d5dbfc242d63"
+version = "0.4.1"
+
+[[deps.Random]]
+deps = ["SHA"]
+uuid = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+version = "1.11.0"
+
+[[deps.RecipesBase]]
+deps = ["PrecompileTools"]
+git-tree-sha1 = "5c3d09cc4f31f5fc6af001c250bf1278733100ff"
+uuid = "3cdcf5f2-1ef4-517c-9805-6587b60abb01"
+version = "1.3.4"
+
+[[deps.Reexport]]
+git-tree-sha1 = "45e428421666073eab6f2da5c9d310d99bb12f9b"
+uuid = "189a3867-3050-52da-a836-e630ba90ab69"
+version = "1.2.2"
+
+[[deps.Requires]]
+deps = ["UUIDs"]
+git-tree-sha1 = "62389eeff14780bfe55195b7204c0d8738436d64"
+uuid = "ae029012-a4dd-5104-9daa-d747884805df"
+version = "1.3.1"
+
+[[deps.SCS]]
+deps = ["LinearAlgebra", "MathOptInterface", "OpenBLAS32_jll", "PrecompileTools", "SCS_jll", "SparseArrays"]
+git-tree-sha1 = "cd27f0cfefd06c7b2bd0343e08edbd9a3d2e1869"
+uuid = "c946c3f1-0d1f-5ce8-9dea-7daa1f7e2d13"
+version = "2.6.3"
+
+    [deps.SCS.extensions]
+    SCSSCS_GPU_jllExt = ["SCS_GPU_jll"]
+    SCSSCS_MKL_jllExt = ["SCS_MKL_jll"]
+
+    [deps.SCS.weakdeps]
+    SCS_GPU_jll = "af6e375f-46ec-5fa0-b791-491b0dfa44a4"
+    SCS_MKL_jll = "3f2553a9-4106-52be-b7dd-865123654657"
+
+[[deps.SCS_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "LLVMOpenMP_jll", "Libdl", "libblastrampoline_jll"]
+git-tree-sha1 = "f7864fb125fc5eb61fa2f2c5738623be0b986edd"
+uuid = "f4f2fc5b-1d94-523c-97ea-2ab488bedf4b"
+version = "300.200.1100+0"
+
+[[deps.SDPA]]
+deps = ["CxxWrap", "LinearAlgebra", "MathOptInterface", "SDPA_jll"]
+git-tree-sha1 = "83dece6a0218e5cdd2d247fc879544f75ec81f82"
+uuid = "b9a10b5b-afa4-512f-a053-bb3d8080febc"
+version = "0.6.1"
+
+[[deps.SDPA_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "OpenBLAS32_jll", "libcxxwrap_julia_jll"]
+git-tree-sha1 = "3c6472c40a01aa291a6d578d73b54799e67033e3"
+uuid = "7fc90fd6-dbef-5a6a-93f8-169f2a2e705b"
+version = "700.300.1900+0"
+
+[[deps.SDPLR]]
+deps = ["MathOptInterface", "SDPLR_jll"]
+git-tree-sha1 = "faef87ce74259876410e1e6d303da9a3da08d1ea"
+uuid = "56161740-ea4e-4253-9d15-43c62ff94d95"
+version = "0.1.2"
+
+[[deps.SDPLR_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "JLLWrappers", "Libdl", "OpenBLAS32_jll"]
+git-tree-sha1 = "13be85ec999c098762654d3d036781011c1f14dc"
+uuid = "3a057b76-36a0-51f0-a66f-6d580b8e8efd"
+version = "100.2.300+0"
+
+[[deps.SHA]]
+uuid = "ea8e919c-243c-51af-8825-aaa63cd721ce"
+version = "0.7.0"
+
+[[deps.Serialization]]
+uuid = "9e88b42a-f829-5b0c-bbe9-9e923198166b"
+version = "1.11.0"
+
+[[deps.SnoopPrecompile]]
+deps = ["Preferences"]
+git-tree-sha1 = "e760a70afdcd461cf01a575947738d359234665c"
+uuid = "66db9d55-30c0-4569-8b51-7e840670fc0c"
+version = "1.0.3"
+
+[[deps.SparseArrays]]
+deps = ["Libdl", "LinearAlgebra", "Random", "Serialization", "SuiteSparse_jll"]
+uuid = "2f01184e-e22b-5df5-ae63-d93ebab69eaf"
+version = "1.12.0"
+
+[[deps.SpecialFunctions]]
+deps = ["IrrationalConstants", "LogExpFunctions", "OpenLibm_jll", "OpenSpecFun_jll"]
+git-tree-sha1 = "5acc6a41b3082920f79ca3c759acbcecf18a8d78"
+uuid = "276daf66-3868-5448-9aa4-cd146d93841b"
+version = "2.7.1"
+
+    [deps.SpecialFunctions.extensions]
+    SpecialFunctionsChainRulesCoreExt = "ChainRulesCore"
+
+    [deps.SpecialFunctions.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+
+[[deps.StaticArrays]]
+deps = ["LinearAlgebra", "PrecompileTools", "Random", "StaticArraysCore"]
+git-tree-sha1 = "246a8bb2e6667f832eea063c3a56aef96429a3db"
+uuid = "90137ffa-7385-5640-81b9-e52037218182"
+version = "1.9.18"
+
+    [deps.StaticArrays.extensions]
+    StaticArraysChainRulesCoreExt = "ChainRulesCore"
+    StaticArraysStatisticsExt = "Statistics"
+
+    [deps.StaticArrays.weakdeps]
+    ChainRulesCore = "d360d2e6-b24c-11e9-a2a3-2a2ae2dbcce4"
+    Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+
+[[deps.StaticArraysCore]]
+git-tree-sha1 = "6ab403037779dae8c514bad259f32a447262455a"
+uuid = "1e83bf80-4336-4d27-bf5d-d5a4f845583c"
+version = "1.4.4"
+
+[[deps.Statistics]]
+deps = ["LinearAlgebra"]
+git-tree-sha1 = "ae3bb1eb3bba077cd276bc5cfc337cc65c3075c0"
+uuid = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+version = "1.11.1"
+weakdeps = ["SparseArrays"]
+
+    [deps.Statistics.extensions]
+    SparseArraysExt = ["SparseArrays"]
+
+[[deps.StyledStrings]]
+uuid = "f489334b-da3d-4c2e-b8f0-e476e12c162b"
+version = "1.11.0"
+
+[[deps.SuiteSparse]]
+deps = ["Libdl", "LinearAlgebra", "Serialization", "SparseArrays"]
+uuid = "4607b0f0-06f3-5cda-b6b1-a6196a1729e9"
+
+[[deps.SuiteSparse_jll]]
+deps = ["Artifacts", "Libdl", "libblastrampoline_jll"]
+uuid = "bea87d4a-7f5b-5778-9afe-8cc45184846c"
+version = "7.8.3+2"
+
+[[deps.Suppressor]]
+deps = ["Logging"]
+git-tree-sha1 = "6dbb5b635c5437c68c28c2ac9e39b87138f37c0a"
+uuid = "fd094767-a336-5f1f-9728-57cf17d0bbfb"
+version = "0.2.8"
+
+[[deps.TOML]]
+deps = ["Dates"]
+uuid = "fa267f1f-6049-4f14-aa54-33bafae1ed76"
+version = "1.0.3"
+
+[[deps.Tar]]
+deps = ["ArgTools", "SHA"]
+uuid = "a4e569a6-e804-4fa4-b0f3-eef7a1d5b13e"
+version = "1.10.0"
+
+[[deps.Test]]
+deps = ["InteractiveUtils", "Logging", "Random", "Serialization"]
+uuid = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+version = "1.11.0"
+
+[[deps.TimerOutputs]]
+deps = ["ExprTools", "Printf"]
+git-tree-sha1 = "3748bd928e68c7c346b52125cf41fff0de6937d0"
+uuid = "a759f4b9-e2f1-59dc-863e-4aeb61b1ea8f"
+version = "0.5.29"
+
+    [deps.TimerOutputs.extensions]
+    FlameGraphsExt = "FlameGraphs"
+
+    [deps.TimerOutputs.weakdeps]
+    FlameGraphs = "08572546-2f56-4bcf-ba4e-bab62c3a3f89"
+
+[[deps.TranscodingStreams]]
+git-tree-sha1 = "0c45878dcfdcfa8480052b6ab162cdd138781742"
+uuid = "3bb67fe8-82b1-5028-8e26-92a6c54297fa"
+version = "0.11.3"
+
+[[deps.UUIDs]]
+deps = ["Random", "SHA"]
+uuid = "cf7118a7-6976-5b1a-9a39-7adc72f591a4"
+version = "1.11.0"
+
+[[deps.Unicode]]
+uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
+version = "1.11.0"
+
+[[deps.UnsafeArrays]]
+git-tree-sha1 = "efcbb6828697ffffc245a9de7300552535abe005"
+uuid = "c4a57d5a-5b31-53a6-b365-19f8c011fbd6"
+version = "1.0.8"
+
+[[deps.Zlib_jll]]
+deps = ["Libdl"]
+uuid = "83775a58-1f1d-513f-b197-d71354ab007a"
+version = "1.3.1+2"
+
+[[deps.libblastrampoline_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "8e850b90-86db-534c-a0d3-1478176c7d93"
+version = "5.15.0+0"
+
+[[deps.libcxxwrap_julia_jll]]
+deps = ["Artifacts", "JLLWrappers", "Libdl"]
+git-tree-sha1 = "a0b6eb05dde4ededa688ecf05e33caa5bffd42a5"
+uuid = "3eaa8342-bff7-56a5-9981-c04077f7cee7"
+version = "0.14.9+0"
+
+[[deps.nghttp2_jll]]
+deps = ["Artifacts", "Libdl"]
+uuid = "8e850ede-7688-5339-a07c-302acd2aaf8d"
+version = "1.64.0+1"
+
+[[deps.p7zip_jll]]
+deps = ["Artifacts", "CompilerSupportLibraries_jll", "Libdl"]
+uuid = "3f19e933-33d8-53b3-aaab-bd5110c3b7a0"
+version = "17.7.0+0"
+"""
+
 # ╔═╡ Cell order:
 # ╟─d4638467-0f47-4aa5-8ff7-7e4146642504
-# ╠═2ec2d60a-1523-11f1-a90f-3723ba1c0c9f
+# ╟─67c3b4b7-1f99-48b4-8ac8-0a58c17fe904
 # ╟─bebf905b-e1b1-4767-96b5-f821456f35b0
 # ╠═6db801d2-a48c-4a15-9ee0-4eb1c1305c79
-# ╟─67c3b4b7-1f99-48b4-8ac8-0a58c17fe904
+# ╟─316449b5-2772-4df5-825b-284ada495620
 # ╟─9e93a876-db65-403d-8cf8-dbfb904d0139
 # ╠═86cf8378-c90c-4194-81c1-dba25317c8f3
+# ╟─07ab806a-0e3b-4798-87b7-466984bd05eb
+# ╠═352a0f0e-a7fb-4086-93fb-9292a04477e8
+# ╠═1c9a420f-5f8b-4ab8-af93-a8ab8ab761ce
 # ╠═63ad8746-1e48-45fb-add4-392874ce51d0
-# ╠═4c0ed8a5-ad56-4227-b9b9-b0a40375516f
+# ╟─b971e880-b6a6-4ae2-8338-19311f492843
 # ╟─d1c5b609-0c33-4838-99a3-cba1a78d2060
 # ╠═3921a1bf-1d0f-4dbb-a1a9-e39c57b4a2d0
+# ╟─bdf29f75-c5e3-420e-9a61-babf8ac6825b
 # ╟─480ff309-5b22-4827-a9ab-4cd6f564e24e
+# ╠═a3c3eb83-a523-4c9f-9a65-8b9a6b021b47
+# ╠═15388eb8-5fb3-42dd-ac9e-8b57bd0c88d5
 # ╠═a62dfd63-5875-453c-9d73-57ccc54aee6a
+# ╟─0d5ad6d1-14fd-4787-99ca-7103329ca99f
 # ╟─18920310-9a5f-46fb-8c4b-1f5992479d1f
 # ╠═57d2b602-ddd3-495a-908d-ab6efbc8f33d
+# ╟─03f0ea20-0fcd-44af-adc7-be2c19583e3c
 # ╟─d2f0025d-ce27-4595-9306-60fb69a7c3af
 # ╠═5b423621-2563-415e-a674-48e1a4dc450a
 # ╟─7702ec1e-9024-47c4-8246-d335275b3773
 # ╠═74ad4737-1937-402b-99e5-7679a8e74ad8
 # ╠═2abff818-c0a4-478a-be1f-d14772c7349d
 # ╠═5f276a99-ce19-40ce-9a3c-90b49989d638
+# ╟─00000000-0000-0000-0000-000000000001
+# ╟─00000000-0000-0000-0000-000000000002
