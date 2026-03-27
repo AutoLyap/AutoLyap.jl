@@ -34,7 +34,7 @@ using AutoLyap
 
 in the `Julia REPL`. 
 
-### Reproducible [`Pluto`](`Pluto`) notebook to try out!
+### Reproducible `Pluto` notebook to try out!
 
 A completely open-source reproducible `Pluto` notebook to try out a simple `AutoLyap.jl` example is available at:
 
