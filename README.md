@@ -2,11 +2,13 @@
 
 `AutoLyap.jl` is a native Julia implementation of the *AutoLyap* methodology and the associated Python package  [AutoLyap](https://github.com/AutoLyap/AutoLyap). 
 
-The package is functionally equivalent to the Python package [AutoLyap](https://github.com/AutoLyap/AutoLyap), however the certain design patterns are different in the Julia package, e.g., the Julia package uses the notion of `struct+method` along with `multiple dispatch` in Julia over the notion of `class` in Python.  The `runtestsl.jl` contains Julia test code for all analogous Python test code mentioned in the paper. 
+The package is functionally equivalent to the Python package [AutoLyap](https://github.com/AutoLyap/AutoLyap), however the certain design patterns are different in the Julia package, e.g., the Julia package uses the notion of `struct+method` along with `multiple dispatch` in Julia over the notion of `class` in Python.  
+
+The `runtestsl.jl` contains Julia test code for all analogous Python test code mentioned in the paper. 
 
 ##### Supported solvers
 
-AutoLyap currently supports the following solver symbols:
+`AutoLyap` currently supports the following solver symbols:
 
 - MOSEK (`:mosek`, commercial)
 - Clarabel (`:clarabel`, open-source)
