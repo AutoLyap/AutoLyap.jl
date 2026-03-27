@@ -2,31 +2,9 @@
 
 `AutoLyap.jl` is a native Julia implementation of the *AutoLyap* methodology and the associated Python package  [AutoLyap](https://github.com/AutoLyap/AutoLyap). 
 
-The package is functionally equivalent to the Python package [AutoLyap](https://github.com/AutoLyap/AutoLyap), however the certain design patterns are different in the Julia package, e.g., the Julia package uses the notion of `struct+method` along with `multiple dispatch` in Julia over the notion of `class` in Python. 
+The package is functionally equivalent to the Python package [AutoLyap](https://github.com/AutoLyap/AutoLyap), however the certain design patterns are different in the Julia package, e.g., the Julia package uses the notion of `struct+method` along with `multiple dispatch` in Julia over the notion of `class` in Python.  The `runtestsl.jl` contains Julia test code for all analogous Python test code mentioned in the paper. 
 
-The `runtestsl.jl` contains Julia test code for all analogous Python test code mentioned in the paper. 
-
-### Installation
-
-In the `Julia REPL` , type
-
-```julia
-] add https://github.com/AutoLyap/AutoLyap.jl
-```
-
-That's it! Now you are ready to use `AutoLyap.jl` by just typing 
-
-```julia
-using AutoLyap
-```
-
-in the `Julia REPL`. For an example, please proceed to the next section.
-
-### Usage 
-
-Below is a short example on using `AutoLyap.jl` for Douglas-Rachford splitting. 
-
-#### Supported solvers
+##### Supported solvers
 
 AutoLyap currently supports the following solver symbols:
 
@@ -40,7 +18,36 @@ AutoLyap currently supports the following solver symbols:
 - Hypatia (`:hypatia`, open-source)
 - SDPLR (`:sdplr`, open-source)
 
-#### Example: Douglas-Rachford Method
+### Installation
+
+To install `AutoLyap`, in the `Julia REPL` , type the following:
+
+```julia
+] add AutoLyap
+```
+
+That's it! Now you are ready to use `AutoLyap.jl` by just typing 
+
+```julia
+using AutoLyap
+```
+
+in the `Julia REPL`. 
+
+### Reproducible [`Pluto`](`Pluto`) notebook to try out!
+
+A completely open-source reproducible `Pluto` notebook to try out a simple `AutoLyap.jl` example is available at:
+
+[https://pluto.land/n/tuq8kur3](https://pluto.land/n/tuq8kur3)
+
+From this link, you can either download the `Pluto` notebook file and run it locally with `Pluto`, or run the notebook with [`Binder`](https://plutojl.org/en/docs/binder/) directly in your browser!
+
+You can also take a look at the same example below. 
+
+### Example: Douglas-Rachford Method
+
+Below is a short example on using `AutoLyap.jl` for Douglas-Rachford splitting. 
+
 
 We show here how `AutoLyap.jl` can be used to find linear convergence rates for the Douglas–Rachford method using a few lines of Julia code. In particular, consider the inclusion problem
 
