@@ -1,6 +1,6 @@
 name = "AutoLyap"
 uuid = "0620cc6d-054a-4145-a0e3-d8b030648321"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Shuvomoy Das Gupta <shuvomoy.dasgupta@gmail.com>", "Adrien Taylor", "Manu Upadhyaya"]
 
 [deps]
@@ -26,7 +26,6 @@ Clarabel = "^0.11.0"
 Combinatorics = "^1.0.0"
 Hypatia = "0.8.2"
 JuMP = "^1.27.0"
-LinearAlgebra = "^1.11.0"
 Mosek = "^11.0.1"
 MosekTools = "^0.15.9"
 ProxSDP = "1.8.3"
@@ -34,7 +33,7 @@ SCS = "^2.1.0"
 SDPA = "0.6.1"
 SDPLR = "0.1.2"
 Suppressor = "^0.2.8"
-julia = "^1.11.0"
+julia = "1.10"
 
 [extras]
 Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
