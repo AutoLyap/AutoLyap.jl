@@ -10,6 +10,7 @@ using JuMP, Mosek, MosekTools, Clarabel, COSMO, SCS, SDPA, ProxSDP, Hypatia, SDP
     using COPT
 end
 
+using ..Utils
 using ..ProblemClass
 using ..Algorithms
 
@@ -265,6 +266,8 @@ return_full_model: If true, appends Julia-specific debug payload with status, ob
 Output to the function
 =================== 
 Returns a dictionary with keys `"status"`, `"solve_status"`, `"c_K"`, and `"certificate"`.
+For `solver = :sdplr`, native SDPLR numerical-breakdown diagnostics are mapped to
+`"status" => "not_solved"` and `"solve_status" => "sdplr_numerical_error"`.
 If `return_full_model == true`, the dictionary additionally contains `"full_model"` with Julia-specific debug payload.
 
 =#
@@ -460,7 +463,16 @@ function search_lyapunov(
     @objective(model, Min, c)
 
     try
-        optimize!(model)
+        optimize_result = Utils.optimize_with_diagnostics!(model, solver; show_output=show_output)
+        if optimize_result.native_numerical_error
+            return Dict{String,Any}(
+                "status" => _SEARCH_STATUS_NOT_SOLVED,
+                "solve_status" => "sdplr_numerical_error",
+                "c_K" => nothing,
+                "certificate" => nothing,
+            )
+        end
+
         status = termination_status(model)
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"

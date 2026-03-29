@@ -11,6 +11,7 @@ end
 
 
 # Import our own modules
+using ..Utils
 using ..ProblemClass
 using ..Algorithms
 
@@ -284,6 +285,8 @@ return_full_model: If true, returns a full solution snapshot with status, decisi
 Output to the function
 =================== 
 Returns a dictionary with keys `"status"`, `"solve_status"`, `"rho"`, and `"certificate"`.
+For `solver = :sdplr`, native SDPLR numerical-breakdown diagnostics are mapped to
+`"status" => "not_solved"` and `"solve_status" => "sdplr_numerical_error"`.
 If `return_full_model == true`, the dictionary additionally contains `"full_model"` with Julia-specific debug payload.
 
 =#
@@ -487,7 +490,16 @@ function search_lyapunov(
     end
 
     try
-        optimize!(model)
+        optimize_result = Utils.optimize_with_diagnostics!(model, solver; show_output=show_output)
+        if optimize_result.native_numerical_error
+            return Dict{String,Any}(
+                "status" => _SEARCH_STATUS_NOT_SOLVED,
+                "solve_status" => "sdplr_numerical_error",
+                "rho" => nothing,
+                "certificate" => nothing,
+            )
+        end
+
         status = termination_status(model)
         if show_output == true
            @info "[🎯 ] termination_status is $(status)"

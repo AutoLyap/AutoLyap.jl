@@ -37,7 +37,34 @@ elseif solver_val == :copt || solver_val == :scs || solver_val == :cosmo || solv
 else
     error("Unsupported solver: $solver_val. Supported solvers are :mosek, :clarabel, :hypatia, :copt, :scs, :cosmo, :sdpa, :proxsdp, and :sdplr.")
 end
-    
+
+function assert_sdplr_result(result; value_key::String="rho")
+    @test result isa Dict
+    @test result["status"] in ("feasible", "infeasible", "not_solved")
+
+    if result["status"] == "feasible"
+        @test result["solve_status"] != "solver_error"
+        @test result["certificate"] !== nothing
+        @test haskey(result, value_key)
+        @test !isnothing(result[value_key])
+        @test isfinite(result[value_key])
+    elseif result["status"] == "not_solved"
+        @test result["solve_status"] == "sdplr_numerical_error"
+        @test result["certificate"] === nothing
+        @test haskey(result, value_key)
+        @test result[value_key] === nothing
+    else
+        @test result["solve_status"] != "solver_error"
+        @test result["certificate"] === nothing
+    end
+end
+
+@testset "SDPLR native output detection helpers" begin
+    @test AutoLyap.Utils._sdplr_output_has_numerical_error("Error(sdplrlib): Got NaN.\n")
+    @test AutoLyap.Utils._sdplr_output_has_numerical_error("Problem!  0.000000 should be less then 0.\n")
+    @test AutoLyap.Utils._sdplr_output_has_numerical_error("", "Error(sdplrlib): Got NaN.\n")
+    @test !AutoLyap.Utils._sdplr_output_has_numerical_error("majiter = 1\n")
+end
 
 # ## TEST CASE 1: MaximallyMonotone + (StronglyMonotone + Lipschitz)
 
@@ -148,12 +175,7 @@ end
         show_output=false
     )
 
-    @test result isa Dict
-    @test result["status"] in ("feasible", "infeasible", "not_solved")
-    @test result["solve_status"] != "solver_error"
-    if result["status"] == "feasible"
-        @test isfinite(result["rho"])
-    end
+    assert_sdplr_result(result)
 end
 
 @testset "SDPLR maxrank option tests" begin
@@ -177,12 +199,7 @@ end
         maxrank=2,
         show_output=false
     )
-    @test result_int isa Dict
-    @test result_int["status"] in ("feasible", "infeasible", "not_solved")
-    @test result_int["solve_status"] != "solver_error"
-    if result_int["status"] == "feasible"
-        @test isfinite(result_int["rho"])
-    end
+    assert_sdplr_result(result_int)
 
     rank_callback = (m, n) -> min(2, n)
     result_fun = AutoLyap.IterationIndependent.search_lyapunov(
@@ -195,12 +212,7 @@ end
         maxrank=rank_callback,
         show_output=false
     )
-    @test result_fun isa Dict
-    @test result_fun["status"] in ("feasible", "infeasible", "not_solved")
-    @test result_fun["solve_status"] != "solver_error"
-    if result_fun["status"] == "feasible"
-        @test isfinite(result_fun["rho"])
-    end
+    assert_sdplr_result(result_fun)
 
     bisection_result = AutoLyap.IterationIndependent.bisection_search_rho(
         problem,
@@ -214,13 +226,7 @@ end
         maxrank=2,
         show_output=false
     )
-    @test bisection_result isa Dict
-    @test bisection_result["status"] in ("feasible", "infeasible", "not_solved")
-    @test bisection_result["solve_status"] != "solver_error"
-    if bisection_result["status"] == "feasible"
-        @test !isnothing(bisection_result["rho"])
-        @test isfinite(bisection_result["rho"])
-    end
+    assert_sdplr_result(bisection_result)
 
     @test_throws ArgumentError AutoLyap.IterationIndependent.search_lyapunov(
         problem,
@@ -243,6 +249,25 @@ end
         maxrank=0,
         show_output=false
     )
+end
+
+@testset "SDPLR silent mode suppresses native diagnostics" begin
+    project_dir = dirname(@__DIR__)
+    script = """
+    using AutoLyap
+    g1 = MaximallyMonotone()
+    g2 = [StronglyMonotone(mu = 1.0), LipschitzOperator(L = 2.0)]
+    problem = InclusionProblem(components = [g1, g2])
+    algorithm = DouglasRachford(gamma = 1.0, lambda_value = 2.0, operator_version = true)
+    (P, T) = AutoLyap.IterationIndependent.get_parameters_distance_to_solution(algorithm)
+    result = AutoLyap.IterationIndependent.search_lyapunov(problem, algorithm, P, T; rho = 0.4, solver = :sdplr, show_output = false)
+    println("status=" * result["status"])
+    println("solve_status=" * result["solve_status"])
+    """
+    output = read(`$(Base.julia_cmd()) --startup-file=no --project=$(project_dir) -e $script`, String)
+    @test occursin("status=", output)
+    @test !occursin("Error(sdplrlib): Got NaN.", output)
+    @test !occursin("should be less then 0.", output)
 end
 
 @testset "DRS Linear Convergence (StronglyMonotone + Lipschitz)" begin
